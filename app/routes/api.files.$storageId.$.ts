@@ -1,6 +1,7 @@
 import type { Route } from "./+types/api.files.$storageId.$";
 import { getStorageById, initDatabase } from "~/lib/storage";
 import { requireAuth } from "~/lib/auth";
+import { getShareByToken } from "~/lib/shares";
 import { S3Client } from "~/lib/s3-client";
 import { WebdevClient } from "~/lib/webdev-client";
 
@@ -16,14 +17,33 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     return Response.json({ error: "Storage not found" }, { status: 404 });
   }
 
-  const { isAdmin } = await requireAuth(request, db);
-
   const url = new URL(request.url);
   const action = url.searchParams.get("action");
+  const shareToken = url.searchParams.get("token");
+
+  let isAdmin = false;
+  let shareVerified = false;
+
+  if (shareToken) {
+    const share = await getShareByToken(db, shareToken);
+    if (share && share.storageId === storageId) {
+      // Check if the requested path is within the shared path
+      const sharePath = share.filePath;
+      if (path === sharePath || path.startsWith(sharePath + "/")) {
+        shareVerified = true;
+      }
+    }
+    if (!shareVerified) {
+      return Response.json({ error: "分享令牌无效或已过期" }, { status: 403 });
+    }
+  } else {
+    const authResult = await requireAuth(request, db);
+    isAdmin = authResult.isAdmin;
+  }
 
   // Permission checks based on action
-  const canList = isAdmin || storage.guestList;
-  const canDownload = isAdmin || storage.guestDownload;
+  const canList = isAdmin || shareVerified || storage.guestList;
+  const canDownload = isAdmin || shareVerified || storage.guestDownload;
 
   // List objects - requires list permission
   if (action === "list" || !action) {

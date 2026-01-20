@@ -25,6 +25,20 @@ CREATE TABLE IF NOT EXISTS sessions (
     expires_at TEXT NOT NULL
 );
 
+-- 分享链接表
+CREATE TABLE IF NOT EXISTS shares (
+    id TEXT PRIMARY KEY,
+    storage_id INTEGER NOT NULL,
+    file_path TEXT NOT NULL,
+    is_directory INTEGER DEFAULT 0,
+    share_token TEXT NOT NULL UNIQUE,
+    expires_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (storage_id) REFERENCES storages(id) ON DELETE CASCADE
+);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_storages_is_public ON storages(is_public);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_shares_token ON shares(share_token);
+CREATE INDEX IF NOT EXISTS idx_shares_storage_id ON shares(storage_id);

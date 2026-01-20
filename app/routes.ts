@@ -5,4 +5,6 @@ export default [
   route("api/storages", "routes/api.storages.ts"),
   route("api/files/:storageId/*", "routes/api.files.$storageId.$.ts"),
   route("api/changelog", "routes/api.changelog.ts"),
+  route("api/shares", "routes/api.shares.ts"),
+  route("share", "routes/share.tsx"),
 ] satisfies RouteConfig;

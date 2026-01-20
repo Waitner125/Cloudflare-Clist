@@ -916,6 +916,11 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [moveDestPath, setMoveDestPath] = useState("");
   const [moving, setMoving] = useState(false);
   const [allFolders, setAllFolders] = useState<string[]>([]);
+  const [shareTarget, setShareTarget] = useState<S3Object | null>(null);
+  const [shareToken, setShareToken] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareExpireHours, setShareExpireHours] = useState(0);
+  const [creatingShare, setCreatingShare] = useState(false);
 
   useEffect(() => {
     setPath("");
@@ -1079,6 +1084,59 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     } finally {
       setMoving(false);
     }
+  };
+
+  const startShare = (obj: S3Object) => {
+    setShareTarget(obj);
+    setShareToken("");
+    setShareUrl("");
+    setShareExpireHours(0);
+  };
+
+  const handleCreateShare = async () => {
+    if (!shareTarget) return;
+
+    setCreatingShare(true);
+    try {
+      let expiresAt: string | undefined;
+      if (shareExpireHours > 0) {
+        const expireDate = new Date();
+        expireDate.setHours(expireDate.getHours() + shareExpireHours);
+        expiresAt = expireDate.toISOString();
+      }
+
+      const res = await fetch("/api/shares", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          storageId: storage.id,
+          filePath: shareTarget.key,
+          isDirectory: shareTarget.isDirectory,
+          expiresAt,
+        }),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as { share: { shareToken: string }; shareUrl: string };
+        setShareToken(data.share.shareToken);
+        setShareUrl(data.shareUrl);
+      } else {
+        const data = (await res.json()) as { error?: string };
+        alert(data.error || "创建分享链接失败");
+      }
+    } catch {
+      alert("网络错误");
+    } finally {
+      setCreatingShare(false);
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      alert("已复制到剪贴板");
+    }).catch(() => {
+      alert("复制失败，请手动复制");
+    });
   };
 
   const toggleSelect = (key: string) => {
@@ -1855,6 +1913,13 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                       isAdmin && (
                         <div className="flex items-center justify-end gap-2">
                           <button
+                            onClick={() => startShare(obj)}
+                            className="text-zinc-400 dark:text-zinc-500 hover:text-green-500"
+                            title="分享"
+                          >
+                            🔗
+                          </button>
+                          <button
                             onClick={() => startRename(obj)}
                             className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
                             title="重命名"
@@ -1899,6 +1964,13 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                         )}
                         {isAdmin && (
                           <>
+                            <button
+                              onClick={() => startShare(obj)}
+                              className="text-zinc-400 dark:text-zinc-500 hover:text-green-500"
+                              title="分享"
+                            >
+                              🔗
+                            </button>
                             <button
                               onClick={() => startRename(obj)}
                               className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
@@ -1981,6 +2053,104 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                   {renaming ? "处理中..." : "确定"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Share Modal */}
+      {shareTarget && (
+        <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShareTarget(null)}>
+          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-sm rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+            <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
+              <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm">生成分享链接</span>
+              <button onClick={() => setShareTarget(null)} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="text-xs text-zinc-500 mb-2 font-mono">
+                分享: {shareTarget.name}
+              </div>
+
+              {!shareUrl ? (
+                <>
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1 font-mono">过期时间</label>
+                    <select
+                      value={shareExpireHours}
+                      onChange={(e) => setShareExpireHours(parseInt(e.target.value, 10))}
+                      className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                    >
+                      <option value={0}>永不过期</option>
+                      <option value={1}>1 小时</option>
+                      <option value={24}>1 天</option>
+                      <option value={168}>1 周</option>
+                      <option value={720}>1 月</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShareTarget(null)}
+                      className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={handleCreateShare}
+                      disabled={creatingShare}
+                      className="flex-1 px-3 py-2 bg-blue-500 text-white text-sm hover:bg-blue-600 disabled:opacity-50 rounded"
+                    >
+                      {creatingShare ? "生成中..." : "生成链接"}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1 font-mono">分享令牌</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={shareToken}
+                          readOnly
+                          className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-xs rounded"
+                        />
+                        <button
+                          onClick={() => copyToClipboard(shareToken)}
+                          className="px-3 py-2 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-sm rounded text-zinc-900 dark:text-zinc-100"
+                        >
+                          复制
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1 font-mono">分享链接</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={shareUrl}
+                          readOnly
+                          className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-xs rounded overflow-hidden"
+                        />
+                        <button
+                          onClick={() => copyToClipboard(shareUrl)}
+                          className="px-3 py-2 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-sm rounded text-zinc-900 dark:text-zinc-100"
+                        >
+                          复制
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShareTarget(null)}
+                      className="flex-1 px-3 py-2 bg-blue-500 text-white text-sm hover:bg-blue-600 rounded"
+                    >
+                      完成
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
