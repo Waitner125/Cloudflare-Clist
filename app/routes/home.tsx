@@ -1914,10 +1914,10 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => startShare(obj)}
-                            className="text-zinc-400 dark:text-zinc-500 hover:text-green-500"
+                            className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
                             title="分享"
                           >
-                            🔗
+                            🡭
                           </button>
                           <button
                             onClick={() => startRename(obj)}
@@ -1966,10 +1966,10 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                           <>
                             <button
                               onClick={() => startShare(obj)}
-                              className="text-zinc-400 dark:text-zinc-500 hover:text-green-500"
+                              className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
                               title="分享"
                             >
-                              🔗
+                              🡭
                             </button>
                             <button
                               onClick={() => startRename(obj)}
