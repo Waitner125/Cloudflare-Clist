@@ -2,6 +2,8 @@
 
 A cloud storage aggregation service deployed on Cloudflare Workers with D1 database support.
 
+English | [简体中文](./README_zh-CN.md)
+
 ## Features
 
 - File storage and management
