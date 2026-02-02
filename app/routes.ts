@@ -7,4 +7,5 @@ export default [
   route("api/changelog", "routes/api.changelog.ts"),
   route("api/shares", "routes/api.shares.ts"),
   route("share", "routes/share.tsx"),
+  route("dav/:storageId/*", "routes/dav.$storageId.$.ts"),
 ] satisfies RouteConfig;

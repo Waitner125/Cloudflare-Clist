@@ -12,6 +12,7 @@ English | [简体中文](./README_zh-CN.md)
 - Responsive web interface
 - File preview capabilities
 - Multi-storage backend support
+- **WebDAV server support** - Access your storages via WebDAV protocol
 
 ## Prerequisites
 
@@ -130,6 +131,39 @@ The application uses the following environment variables:
 - `SITE_TITLE`: Title displayed on the website
 - `SITE_ANNOUNCEMENT`: Announcement text shown on the homepage
 - `CHUNK_SIZE_MB`: Maximum file chunk size in MB for uploads
+- `WEBDAV_ENABLED`: Set to "true" to enable WebDAV server
+- `WEBDAV_USERNAME`: WebDAV access username (optional, defaults to admin username)
+- `WEBDAV_PASSWORD`: WebDAV access password (optional, defaults to admin password)
+
+## WebDAV Configuration
+
+### Enabling WebDAV
+
+Set the following in Cloudflare Workers environment variables:
+
+```json
+{
+  "vars": {
+    "WEBDAV_ENABLED": "true",
+    "WEBDAV_USERNAME": "your_webdav_username",
+    "WEBDAV_PASSWORD": "your_webdav_password"
+  }
+}
+```
+
+### WebDAV Access URLs
+
+Once enabled, access your storages via:
+
+- All storages root: `https://your-domain/dav/0/`
+- Specific storage: `https://your-domain/dav/{storage_id}/`
+
+### Client Connection
+
+- **Windows**: Map network drive with WebDAV URL
+- **macOS**: Finder → Go → Connect to Server
+- **Linux**: Use davfs2 or file manager
+- **Mobile**: Use any WebDAV-compatible file manager app
 
 ## Database Schema
 

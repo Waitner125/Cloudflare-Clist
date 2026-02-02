@@ -41,6 +41,13 @@ CList 是一个强大的云存储管理平台，提供以下核心功能：
 - **直观操作**：简洁友好的用户界面，降低使用门槛
 - **实时反馈**：操作状态实时显示，提升用户体验
 
+### WebDAV 服务支持
+- **对外提供 WebDAV**：将 CList 存储通过 WebDAV 协议对外提供服务
+- **多端访问**：支持 Windows、macOS、Linux 及移动设备通过 WebDAV 客户端访问
+- **灵活认证**：支持独立的 WebDAV 用户名密码，或使用管理员账号
+- **存储访问**：可访问所有已配置的存储后端
+- **设置界面**：在设置中查看 WebDAV 服务状态和访问地址
+
 ### Cloudflare 平台集成
 - **Workers 部署**：基于 Cloudflare Workers 的无服务器架构，全球快速访问
 - **D1 数据库**：使用 Cloudflare D1 SQLite 数据库存储元数据和配置
@@ -171,6 +178,39 @@ wrangler deploy
 - `SITE_TITLE`：网站上显示的标题
 - `SITE_ANNOUNCEMENT`：主页显示的公告文本
 - `CHUNK_SIZE_MB`：文件上传的最大分块大小（单位：MB）
+- `WEBDAV_ENABLED`：是否启用 WebDAV 服务（设为 "true" 启用）
+- `WEBDAV_USERNAME`：WebDAV 访问用户名（可选，默认使用管理员用户名）
+- `WEBDAV_PASSWORD`：WebDAV 访问密码（可选，默认使用管理员密码）
+
+## WebDAV 配置
+
+### 启用 WebDAV
+
+在 Cloudflare Workers 环境变量中设置：
+
+```json
+{
+  "vars": {
+    "WEBDAV_ENABLED": "true",
+    "WEBDAV_USERNAME": "your_webdav_username",  // 可选
+    "WEBDAV_PASSWORD": "your_webdav_password"   // 可选
+  }
+}
+```
+
+### WebDAV 访问地址
+
+启用后，可通过以下地址访问：
+
+- 所有存储根目录：`https://your-domain/dav/0/`
+- 指定存储：`https://your-domain/dav/{storage_id}/`
+
+### 客户端连接
+
+- **Windows**：映射网络驱动器，输入 WebDAV 地址
+- **macOS**：Finder → 前往 → 连接服务器
+- **Linux**：使用 davfs2 或文件管理器
+- **移动端**：使用支持 WebDAV 的文件管理 App
 
 ## 数据库架构
 
