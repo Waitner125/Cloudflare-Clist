@@ -844,6 +844,134 @@ function AnnouncementModal({ announcement, onClose }: { announcement: string; on
   );
 }
 
+interface StorageStats {
+  totalSize: number;
+  fileCount: number;
+  folderCount: number;
+  typeDistribution: Record<string, { count: number; size: number }>;
+}
+
+function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose: () => void }) {
+  const [stats, setStats] = useState<StorageStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      setLoading(true);
+      setError("");
+      try {
+        const res = await fetch(`/api/storage-stats/${storage.id}`);
+        if (res.ok) {
+          const data = (await res.json()) as { stats: StorageStats };
+          setStats(data.stats);
+        } else {
+          const data = (await res.json()) as { error?: string };
+          setError(data.error || "获取统计信息失败");
+        }
+      } catch {
+        setError("网络错误");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchStats();
+  }, [storage.id]);
+
+  const sortedTypes = stats
+    ? Object.entries(stats.typeDistribution)
+        .sort((a, b) => b[1].size - a[1].size)
+        .slice(0, 10)
+    : [];
+
+  return (
+    <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-2xl max-h-[80vh] rounded-lg shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
+          <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm flex items-center gap-2">
+            <span className="text-blue-500">📊</span> 存储统计 - {storage.name}
+          </span>
+          <button onClick={onClose} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <span className="text-zinc-400 dark:text-zinc-500 font-mono text-sm">正在统计中，请稍候...</span>
+            </div>
+          ) : error ? (
+            <div className="flex items-center justify-center py-8">
+              <span className="text-red-500 font-mono text-sm">{error}</span>
+            </div>
+          ) : stats ? (
+            <div className="space-y-6">
+              {/* Overview Stats */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                  <div className="text-xs text-zinc-500 font-mono mb-1">总大小</div>
+                  <div className="text-2xl font-mono text-zinc-900 dark:text-zinc-100">{formatBytes(stats.totalSize)}</div>
+                </div>
+                <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                  <div className="text-xs text-zinc-500 font-mono mb-1">文件数量</div>
+                  <div className="text-2xl font-mono text-zinc-900 dark:text-zinc-100">{stats.fileCount.toLocaleString()}</div>
+                </div>
+                <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                  <div className="text-xs text-zinc-500 font-mono mb-1">文件夹数量</div>
+                  <div className="text-2xl font-mono text-zinc-900 dark:text-zinc-100">{stats.folderCount.toLocaleString()}</div>
+                </div>
+              </div>
+
+              {/* Type Distribution */}
+              {sortedTypes.length > 0 && (
+                <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
+                  <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-3">文件类型分布 (前10)</div>
+                  <div className="space-y-2">
+                    {sortedTypes.map(([ext, data]) => {
+                      const percentage = stats.totalSize > 0 ? (data.size / stats.totalSize) * 100 : 0;
+                      return (
+                        <div key={ext} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs font-mono">
+                            <span className="text-zinc-700 dark:text-zinc-300">
+                              .{ext} ({data.count.toLocaleString()} 个文件)
+                            </span>
+                            <span className="text-zinc-500">
+                              {formatBytes(data.size)} ({percentage.toFixed(1)}%)
+                            </span>
+                          </div>
+                          <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-2 overflow-hidden">
+                            <div
+                              className="bg-blue-500 h-full rounded-full transition-all"
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty State */}
+              {stats.fileCount === 0 && (
+                <div className="text-center py-8">
+                  <span className="text-zinc-400 dark:text-zinc-500 font-mono text-sm">此存储为空</span>
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+        <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0">
+          <button
+            onClick={onClose}
+            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-mono transition rounded"
+          >
+            关闭
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ReleaseItem {
   version: string;
   name: string;
@@ -2323,6 +2451,8 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showAnnouncement, setShowAnnouncement] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [statsStorage, setStatsStorage] = useState<StorageInfo | null>(null);
   const [editingStorage, setEditingStorage] = useState<StorageInfo | null>(null);
   const [isDark, setIsDark] = useState(true);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -2530,6 +2660,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                   {isAdmin && (
                     <div className="hidden group-hover:flex items-center gap-1" onClick={e => e.stopPropagation()}>
                       <button
+                        onClick={() => { setStatsStorage(s); setShowStats(true); }}
+                        className="text-zinc-400 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-xs px-1"
+                        title="统计"
+                      >
+                        📊
+                      </button>
+                      <button
                         onClick={() => { setEditingStorage(s); setShowStorageForm(true); }}
                         className="text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 text-xs px-1"
                         title="编辑"
@@ -2644,6 +2781,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
       )}
       {showChangelog && (
         <ChangelogModal onClose={() => setShowChangelog(false)} />
+      )}
+      {showStats && statsStorage && (
+        <StorageStatsModal
+          storage={statsStorage}
+          onClose={() => { setShowStats(false); setStatsStorage(null); }}
+        />
       )}
     </div>
   );
