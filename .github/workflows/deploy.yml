@@ -101,7 +101,7 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: >-
             deploy
-            --config wrangler.jsonc
+            --config build/server/wrangler.json
             --var "VALUE_FROM_CLOUDFLARE:${{ vars.VALUE_FROM_CLOUDFLARE }}"
             --var "SITE_TITLE:${{ vars.SITE_TITLE }}"
             --var "SITE_ANNOUNCEMENT:${{ vars.SITE_ANNOUNCEMENT }}"
