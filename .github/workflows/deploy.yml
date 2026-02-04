@@ -74,20 +74,6 @@ jobs:
           }
           EOF
 
-      - name: Sync Worker secrets
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
-          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
-          WEBDAV_USERNAME: ${{ secrets.WEBDAV_USERNAME }}
-          WEBDAV_PASSWORD: ${{ secrets.WEBDAV_PASSWORD }}
-        run: |
-          echo "$ADMIN_USERNAME" | npx wrangler secret put ADMIN_USERNAME --config wrangler.jsonc
-          echo "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD --config wrangler.jsonc
-          echo "$WEBDAV_USERNAME" | npx wrangler secret put WEBDAV_USERNAME --config wrangler.jsonc
-          echo "$WEBDAV_PASSWORD" | npx wrangler secret put WEBDAV_PASSWORD --config wrangler.jsonc
-
       - name: Apply D1 migrations
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -111,3 +97,17 @@ jobs:
             --var "SITE_ANNOUNCEMENT:${SITE_ANNOUNCEMENT}" \
             --var "CHUNK_SIZE_MB:${CHUNK_SIZE_MB}" \
             --var "WEBDAV_ENABLED:${WEBDAV_ENABLED}"
+
+      - name: Sync Worker secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          WEBDAV_USERNAME: ${{ secrets.WEBDAV_USERNAME }}
+          WEBDAV_PASSWORD: ${{ secrets.WEBDAV_PASSWORD }}
+        run: |
+          echo "$ADMIN_USERNAME" | npx wrangler secret put ADMIN_USERNAME --config wrangler.jsonc
+          echo "$ADMIN_PASSWORD" | npx wrangler secret put ADMIN_PASSWORD --config wrangler.jsonc
+          echo "$WEBDAV_USERNAME" | npx wrangler secret put WEBDAV_USERNAME --config wrangler.jsonc
+          echo "$WEBDAV_PASSWORD" | npx wrangler secret put WEBDAV_PASSWORD --config wrangler.jsonc
