@@ -19,8 +19,6 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        env:
-          WRANGLER_CONFIG: wrangler.jsonc.example
         run: npm ci
 
       - name: Build
