@@ -21,9 +21,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build
-        run: npm run build
-
       - name: Generate Wrangler config
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -73,6 +70,9 @@ jobs:
             ]
           }
           EOF
+
+      - name: Build
+        run: npm run build
 
       - name: Apply D1 migrations
         env:
