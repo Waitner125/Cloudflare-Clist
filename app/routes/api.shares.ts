@@ -9,10 +9,12 @@ import {
   deleteShare,
   cleanExpiredShares,
 } from "~/lib/shares";
+import { getRequestMeta, logAudit } from "~/lib/audit";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const db = context.cloudflare.env.DB;
   await initDatabase(db);
+  const meta = getRequestMeta(request);
 
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
@@ -30,6 +32,15 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       if (!storage) {
         return Response.json({ error: "存储不存在" }, { status: 404 });
       }
+
+      await logAudit(db, {
+        action: "share.view",
+        userType: "share",
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId: share.storageId,
+        path: share.filePath,
+      });
 
       return Response.json({
         share,
@@ -67,6 +78,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 export async function action({ request, context }: Route.ActionArgs) {
   const db = context.cloudflare.env.DB;
   await initDatabase(db);
+  const meta = getRequestMeta(request);
 
   const { isAdmin } = await requireAuth(request, db);
   if (!isAdmin) {
@@ -104,6 +116,16 @@ export async function action({ request, context }: Route.ActionArgs) {
       const baseUrl = new URL(request.url).origin;
       const shareUrl = `${baseUrl}/share?token=${share.shareToken}`;
 
+      await logAudit(db, {
+        action: "share.create",
+        userType: "admin",
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path: filePath,
+        detail: { isDirectory, expiresAt: expiresAt || null },
+      });
+
       return Response.json({
         success: true,
         share,
@@ -132,6 +154,15 @@ export async function action({ request, context }: Route.ActionArgs) {
       }
 
       await deleteShare(db, shareId);
+
+      await logAudit(db, {
+        action: "share.delete",
+        userType: "admin",
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId: share.storageId,
+        path: share.filePath,
+      });
 
       return Response.json({ success: true });
     } catch (error) {

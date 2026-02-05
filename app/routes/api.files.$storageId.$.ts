@@ -4,10 +4,12 @@ import { requireAuth } from "~/lib/auth";
 import { getShareByToken } from "~/lib/shares";
 import { S3Client } from "~/lib/s3-client";
 import { WebdevClient } from "~/lib/webdev-client";
+import { getRequestMeta, logAudit } from "~/lib/audit";
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const db = context.cloudflare.env.DB;
   await initDatabase(db);
+  const meta = getRequestMeta(request);
 
   const storageId = parseInt(params.storageId || "0", 10);
   const path = params["*"] || "";
@@ -23,6 +25,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
   let isAdmin = false;
   let shareVerified = false;
+  let userType: "admin" | "guest" | "share" = "guest";
 
   if (shareToken) {
     const share = await getShareByToken(db, shareToken);
@@ -36,9 +39,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     if (!shareVerified) {
       return Response.json({ error: "分享令牌无效或已过期" }, { status: 403 });
     }
+    userType = "share";
   } else {
     const authResult = await requireAuth(request, db);
     isAdmin = authResult.isAdmin;
+    userType = isAdmin ? "admin" : "guest";
   }
 
   // Permission checks based on action
@@ -105,6 +110,16 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 
       const fileName = path.split("/").pop() || "download";
 
+      await logAudit(db, {
+        action: "file.download",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path,
+        detail: { fileName, contentLength },
+      });
+
       return new Response(response.body, {
         headers: {
           "Content-Type": contentType,
@@ -124,6 +139,14 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (action === "signed-url") {
     try {
       const signedUrl = await client.getSignedUrl(path);
+      await logAudit(db, {
+        action: "file.signed_url",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path,
+      });
       return Response.json({ url: signedUrl });
     } catch (error) {
       return Response.json(
@@ -155,6 +178,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
 export async function action({ request, params, context }: Route.ActionArgs) {
   const db = context.cloudflare.env.DB;
   await initDatabase(db);
+  const meta = getRequestMeta(request);
 
   const storageId = parseInt(params.storageId || "0", 10);
   const path = params["*"] || "";
@@ -165,6 +189,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   }
 
   const { isAdmin } = await requireAuth(request, db);
+  const userType = isAdmin ? "admin" : "guest";
 
   const method = request.method;
   const url = new URL(request.url);
@@ -214,6 +239,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const body = await request.json() as { contentType?: string };
       const contentType = body.contentType || "application/octet-stream";
       const uploadId = await client.initiateMultipartUpload(path, contentType);
+      await logAudit(db, {
+        action: "file.multipart_init",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path,
+        detail: { uploadId, contentType },
+      });
       return Response.json({ uploadId });
     } catch (error) {
       return Response.json(
@@ -287,6 +321,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       }
 
       await client.completeMultipartUpload(path, body.uploadId, body.parts);
+      await logAudit(db, {
+        action: "file.multipart_complete",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path,
+        detail: { uploadId: body.uploadId, parts: body.parts.length },
+      });
       return Response.json({ success: true, path });
     } catch (error) {
       return Response.json(
@@ -306,6 +349,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       }
 
       await client.abortMultipartUpload(path, body.uploadId);
+      await logAudit(db, {
+        action: "file.multipart_abort",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path,
+        detail: { uploadId: body.uploadId },
+      });
       return Response.json({ success: true });
     } catch (error) {
       return Response.json(
@@ -319,6 +371,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   if (method === "POST" && action === "mkdir") {
     try {
       await client.createFolder(path);
+      await logAudit(db, {
+        action: "file.mkdir",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path,
+      });
       return Response.json({ success: true, path });
     } catch (error) {
       return Response.json(
@@ -384,11 +444,47 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           // Ignore if not exists
         }
 
+        await logAudit(db, {
+          action: "file.rename",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { newPath: newPrefix, moved: keysToMove.length, isDirectory: true },
+        });
+        await logAudit(db, {
+          action: "file.move",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { newPath: newPrefix, moved: keysToMove.length, isDirectory: true },
+        });
         return Response.json({ success: true, newPath: newPrefix, moved: keysToMove.length });
       } else {
         // Rename single file
         await client.copyObject(path, newPath);
         await client.deleteObject(path);
+        await logAudit(db, {
+          action: "file.rename",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { newPath, isDirectory: false },
+        });
+        await logAudit(db, {
+          action: "file.move",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { newPath, isDirectory: false },
+        });
         return Response.json({ success: true, newPath });
       }
     } catch (error) {
@@ -458,11 +554,29 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           // Ignore if not exists
         }
 
+        await logAudit(db, {
+          action: "file.move",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { newPath: newPrefix, moved: keysToMove.length, isDirectory: true },
+        });
         return Response.json({ success: true, newPath: newPrefix, moved: keysToMove.length });
       } else {
         // Move single file
         await client.copyObject(path, newPath);
         await client.deleteObject(path);
+        await logAudit(db, {
+          action: "file.move",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { newPath, isDirectory: false },
+        });
         return Response.json({ success: true, newPath });
       }
     } catch (error) {
@@ -529,6 +643,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       // Upload to S3
       const uploadPath = path ? `${path}/${finalFilename}` : finalFilename;
       await client.putObject(uploadPath, bodyBuffer, contentType);
+      await logAudit(db, {
+        action: "file.fetch",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path: uploadPath,
+        detail: { sourceUrl: remoteUrl, size: bodyBuffer.byteLength },
+      });
 
       return Response.json({
         success: true,
@@ -556,6 +679,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         return Response.json({ error: "No file body provided" }, { status: 400 });
       }
       await client.putObject(path, bodyBuffer, contentType);
+      await logAudit(db, {
+        action: "file.upload",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path,
+        detail: { size: bodyBuffer.byteLength, contentType },
+      });
       return Response.json({ success: true, path });
     } catch (error) {
       return Response.json(
@@ -615,6 +747,15 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           // Folder object might not exist, ignore
         }
 
+        await logAudit(db, {
+          action: "file.rmdir",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { deleted: keysToDelete.length },
+        });
         return Response.json({ success: true, deleted: keysToDelete.length });
       } catch (error) {
         return Response.json(
@@ -627,6 +768,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     // Single file deletion
     try {
       await client.deleteObject(path);
+      await logAudit(db, {
+        action: "file.delete",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path,
+      });
       return Response.json({ success: true });
     } catch (error) {
       return Response.json(

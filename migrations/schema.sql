@@ -42,3 +42,21 @@ CREATE INDEX IF NOT EXISTS idx_storages_is_public ON storages(is_public);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_shares_token ON shares(share_token);
 CREATE INDEX IF NOT EXISTS idx_shares_storage_id ON shares(storage_id);
+
+-- 审计日志表
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    action TEXT NOT NULL,
+    storage_id INTEGER,
+    path TEXT,
+    user_type TEXT NOT NULL DEFAULT 'guest',
+    ip TEXT,
+    user_agent TEXT,
+    detail TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    FOREIGN KEY (storage_id) REFERENCES storages(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_storage_id ON audit_logs(storage_id);

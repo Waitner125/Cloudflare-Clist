@@ -20,6 +20,7 @@ import {
   deleteSessionCookie,
   getSessionIdFromCookie,
 } from "~/lib/auth";
+import { getRequestMeta, logAudit } from "~/lib/audit";
 
 export async function loader({ request, context }: Route.LoaderArgs) {
   const db = context.cloudflare.env.DB;
@@ -56,6 +57,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 export async function action({ request, context }: Route.ActionArgs) {
   const db = context.cloudflare.env.DB;
   await initDatabase(db);
+  const meta = getRequestMeta(request);
 
   const method = request.method;
 
@@ -69,10 +71,24 @@ export async function action({ request, context }: Route.ActionArgs) {
       const isValid = await validateAdmin(username, password, context.cloudflare.env as { ADMIN_USERNAME: string; ADMIN_PASSWORD: string });
 
       if (!isValid) {
+        await logAudit(db, {
+          action: "auth.login_failed",
+          userType: "guest",
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          detail: { username },
+        });
         return Response.json({ error: "Invalid credentials" }, { status: 401 });
       }
 
       const sessionId = await createSession(db, "admin");
+      await logAudit(db, {
+        action: "auth.login",
+        userType: "admin",
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        detail: { username },
+      });
       return Response.json(
         { success: true },
         {
@@ -90,6 +106,12 @@ export async function action({ request, context }: Route.ActionArgs) {
       if (sessionId) {
         await deleteSession(db, sessionId);
       }
+      await logAudit(db, {
+        action: "auth.logout",
+        userType: "admin",
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+      });
       return Response.json(
         { success: true },
         {
@@ -109,6 +131,13 @@ export async function action({ request, context }: Route.ActionArgs) {
 
       try {
         const backup = await exportStoragesForBackup(db);
+        await logAudit(db, {
+          action: "backup.export",
+          userType: "admin",
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          detail: { storages: backup.storages?.length || 0 },
+        });
         return Response.json({ backup });
       } catch (error) {
         return Response.json(
@@ -137,6 +166,13 @@ export async function action({ request, context }: Route.ActionArgs) {
 
       try {
         const result = await importStoragesFromBackup(db, backup, mode);
+        await logAudit(db, {
+          action: "backup.import",
+          userType: "admin",
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          detail: { mode, imported: result.imported, skipped: result.skipped },
+        });
         return Response.json({ success: true, ...result });
       } catch (error) {
         return Response.json(
@@ -154,6 +190,21 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     try {
       const storage = await createStorage(db, body as Parameters<typeof createStorage>[1]);
+      await logAudit(db, {
+        action: "storage.create",
+        userType: "admin",
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId: storage.id,
+        detail: {
+          name: storage.name,
+          type: storage.type,
+          isPublic: storage.isPublic,
+          guestList: storage.guestList,
+          guestDownload: storage.guestDownload,
+          guestUpload: storage.guestUpload,
+        },
+      });
       return Response.json({ storage: { ...storage, secretAccessKey: "***" } });
     } catch (error) {
       return Response.json(
@@ -177,6 +228,21 @@ export async function action({ request, context }: Route.ActionArgs) {
       if (!storage) {
         return Response.json({ error: "Storage not found" }, { status: 404 });
       }
+      await logAudit(db, {
+        action: "storage.update",
+        userType: "admin",
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId: storage.id,
+        detail: {
+          name: storage.name,
+          type: storage.type,
+          isPublic: storage.isPublic,
+          guestList: storage.guestList,
+          guestDownload: storage.guestDownload,
+          guestUpload: storage.guestUpload,
+        },
+      });
       return Response.json({ storage: { ...storage, secretAccessKey: "***" } });
     } catch (error) {
       return Response.json(
@@ -204,6 +270,13 @@ export async function action({ request, context }: Route.ActionArgs) {
       return Response.json({ error: "Storage not found" }, { status: 404 });
     }
 
+    await logAudit(db, {
+      action: "storage.delete",
+      userType: "admin",
+      ip: meta.ip,
+      userAgent: meta.userAgent,
+      storageId: id,
+    });
     return Response.json({ success: true });
   }
 

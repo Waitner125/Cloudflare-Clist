@@ -79,6 +79,19 @@ interface StorageInfo {
   guestUpload: boolean;
 }
 
+interface AuditLog {
+  id: number;
+  action: string;
+  storageId: number | null;
+  path: string | null;
+  userType: "guest" | "admin" | "share";
+  ip: string | null;
+  userAgent: string | null;
+  detail: string | null;
+  createdAt: string;
+}
+
+
 function formatBytes(bytes: number): string {
   if (bytes === 0) return "-";
   const k = 1024;
@@ -445,11 +458,14 @@ function SettingsModal({
   webdavEnabled: boolean;
   storages: StorageInfo[];
 }) {
-  const [activeTab, setActiveTab] = useState<'general' | 'webdav' | 'backup' | 'about'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'webdav' | 'backup' | 'audit' | 'about'>('general');
   const [exporting, setExporting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importMode, setImportMode] = useState<'merge' | 'replace'>('merge');
   const [importResult, setImportResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState("");
 
   const handleExportBackup = async () => {
     setExporting(true);
@@ -527,6 +543,31 @@ function SettingsModal({
     }
   };
 
+  const fetchAuditLogs = async () => {
+    setAuditLoading(true);
+    setAuditError("");
+    try {
+      const res = await fetch("/api/audit?limit=200");
+      if (res.ok) {
+        const data = await res.json() as { logs?: AuditLog[] };
+        setAuditLogs(data.logs || []);
+      } else {
+        const data = await res.json() as { error?: string };
+        setAuditError(data.error || "????????");
+      }
+    } catch {
+      setAuditError("????");
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "audit" && isAdmin) {
+      fetchAuditLogs();
+    }
+  }, [activeTab, isAdmin]);
+
   return (
     <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-md rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
@@ -569,6 +610,14 @@ function SettingsModal({
               }`}
             >
               备份
+            </button>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={activeTab === 'audit' ? 'flex-1 px-4 py-2 text-xs font-mono transition text-blue-500 border-b-2 border-blue-500' : 'flex-1 px-4 py-2 text-xs font-mono transition text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}
+            >
+              ??
             </button>
           )}
           <button
@@ -790,6 +839,47 @@ function SettingsModal({
                   <span>备份文件包含敏感凭证信息，请妥善保管。</span>
                 </div>
               </div>
+            </div>
+          )}
+
+          {activeTab === 'audit' && isAdmin && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono">????</div>
+                <button
+                  onClick={fetchAuditLogs}
+                  disabled={auditLoading}
+                  className="px-3 py-1 text-xs font-mono rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-50 transition"
+                >
+                  {auditLoading ? '???...' : '??'}
+                </button>
+              </div>
+              {auditError && (
+                <div className="text-xs text-red-500 dark:text-red-400 font-mono">{auditError}</div>
+              )}
+              {!auditError && auditLogs.length === 0 && !auditLoading && (
+                <div className="text-xs text-zinc-500 font-mono">????</div>
+              )}
+              {auditLogs.length > 0 && (
+                <div className="space-y-2 max-h-72 overflow-y-auto">
+                  {auditLogs.map((log) => (
+                    <div key={log.id} className="border border-zinc-200 dark:border-zinc-700 rounded p-2 bg-zinc-50 dark:bg-zinc-800/50">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-zinc-500 font-mono">{formatDate(log.createdAt)}</span>
+                        <span className="text-[11px] text-zinc-400 font-mono">{log.userType}</span>
+                      </div>
+                      <div className="text-xs text-zinc-800 dark:text-zinc-200 font-mono">{log.action}</div>
+                      <div className="text-[11px] text-zinc-500 font-mono">
+                        {log.storageId ? `storage #${log.storageId}` : 'storage -'}
+                        {log.path ? ` / ${log.path}` : ''}
+                      </div>
+                      {log.detail && (
+                        <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono mt-1 break-all">{log.detail}</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1158,9 +1248,11 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [shareUrl, setShareUrl] = useState("");
   const [shareExpireHours, setShareExpireHours] = useState(0);
   const [creatingShare, setCreatingShare] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     setPath("");
+    setSearchQuery("");
   }, [storage.id]);
 
   useEffect(() => {
@@ -1389,11 +1481,19 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   };
 
   const toggleSelectAll = () => {
-    if (selectedKeys.size === objects.length) {
-      setSelectedKeys(new Set());
-    } else {
-      setSelectedKeys(new Set(objects.map((obj) => obj.key)));
-    }
+    setSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        for (const obj of visibleObjects) {
+          next.delete(obj.key);
+        }
+      } else {
+        for (const obj of visibleObjects) {
+          next.add(obj.key);
+        }
+      }
+      return next;
+    });
   };
 
   const handleBatchDelete = async () => {
@@ -1820,8 +1920,14 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
 
   const breadcrumbs = path ? path.split("/").filter(Boolean) : [];
 
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+  const visibleObjects = normalizedQuery
+    ? objects.filter((obj) => obj.name.toLowerCase().includes(normalizedQuery))
+    : objects;
+  const allVisibleSelected = visibleObjects.length > 0 && visibleObjects.every((obj) => selectedKeys.has(obj.key));
+
   // Get previewable files for navigation
-  const previewableFiles = objects.filter((obj) => !obj.isDirectory && isPreviewable(obj.name));
+  const previewableFiles = visibleObjects.filter((obj) => !obj.isDirectory && isPreviewable(obj.name));
   const currentPreviewIndex = previewFile ? previewableFiles.findIndex((f) => f.key === previewFile.key) : -1;
 
   const handlePreview = (obj: S3Object) => {
@@ -1884,6 +1990,24 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <div className="relative">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="????..."
+              className="w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-200 rounded focus:border-blue-500 focus:outline-none"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-1 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs"
+                title="????"
+              >
+                ?
+              </button>
+            )}
+          </div>
           {/* Batch delete button */}
           {isAdmin && selectedKeys.size > 0 && (
             <button
@@ -2085,7 +2209,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                   <th className="py-2 px-2 w-8">
                     <input
                       type="checkbox"
-                      checked={objects.length > 0 && selectedKeys.size === objects.length}
+                      checked={allVisibleSelected}
                       onChange={toggleSelectAll}
                       className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800"
                     />
@@ -2098,7 +2222,16 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
               </tr>
             </thead>
             <tbody>
-              {objects.map((obj) => (
+              {visibleObjects.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={isAdmin ? 5 : 4}
+                    className="py-6 text-center text-zinc-400 dark:text-zinc-600"
+                  >
+                    ???????
+                  </td>
+                </tr>
+              ) : visibleObjects.map((obj) => (
                 <tr
                   key={obj.key}
                   className={`border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/30 ${
