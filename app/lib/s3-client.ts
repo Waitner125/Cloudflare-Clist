@@ -535,7 +535,11 @@ export class S3Client {
     };
   }
 
-  async initiateMultipartUpload(key: string, contentType: string): Promise<string> {
+  async initiateMultipartUpload(
+    key: string,
+    contentType: string,
+    _options?: { size?: number; chunkSize?: number }
+  ): Promise<string> {
     const fullKey = this.getFullPath(key);
     const path = `/${this.config.bucket}/${fullKey}`;
     const encodedPath = encodeS3Path(path);

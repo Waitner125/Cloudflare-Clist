@@ -9,6 +9,8 @@ CREATE TABLE IF NOT EXISTS storages (
     secret_access_key TEXT NOT NULL,
     bucket TEXT NOT NULL,
     base_path TEXT DEFAULT '',
+    config_json TEXT DEFAULT '{}',
+    saving_json TEXT DEFAULT '{}',
     is_public INTEGER DEFAULT 0,
     guest_list INTEGER DEFAULT 1,
     guest_download INTEGER DEFAULT 1,

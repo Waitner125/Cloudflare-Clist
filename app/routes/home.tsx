@@ -48,6 +48,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       accessKeyId: s.accessKeyId,
       bucket: s.bucket,
       basePath: s.basePath,
+      config: isAdmin ? s.config : undefined,
       isPublic: s.isPublic,
       guestList: s.guestList,
       guestDownload: s.guestDownload,
@@ -73,10 +74,261 @@ interface StorageInfo {
   accessKeyId?: string;
   bucket?: string;
   basePath?: string;
+  config?: Record<string, any>;
   isPublic: boolean;
   guestList: boolean;
   guestDownload: boolean;
   guestUpload: boolean;
+}
+
+type ConfigField = {
+  key: string;
+  label: string;
+  type: "text" | "password" | "textarea" | "select" | "boolean";
+  required?: boolean;
+  placeholder?: string;
+  options?: Array<{ value: string; label: string }>;
+  defaultValue?: string | number | boolean;
+  show?: (values: Record<string, any>) => boolean;
+  help?: string;
+};
+
+const driveConfigMap: Record<string, { name: string; supportsMultipart: boolean; fields: ConfigField[] }> = {
+  onedrive: {
+    name: "OneDrive",
+    supportsMultipart: true,
+    fields: [
+      {
+        key: "region",
+        label: "区域",
+        type: "select",
+        required: true,
+        options: [
+          { value: "global", label: "全球版" },
+          { value: "cn", label: "中国版（世纪互联）" },
+          { value: "us", label: "美国政府版" },
+          { value: "de", label: "德国版" },
+        ],
+        defaultValue: "global",
+      },
+      { key: "refresh_token", label: "刷新令牌", type: "textarea", required: true, placeholder: "Microsoft OAuth 刷新令牌" },
+      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: false },
+      {
+        key: "api_address",
+        label: "在线API地址",
+        type: "text",
+        placeholder: "自建刷新接口地址",
+        show: (values) => values.use_online_api === true,
+      },
+      {
+        key: "client_id",
+        label: "客户端ID",
+        type: "text",
+        placeholder: "本地客户端ID",
+        show: (values) => values.use_online_api !== true,
+      },
+      {
+        key: "client_secret",
+        label: "客户端密钥",
+        type: "password",
+        placeholder: "本地客户端密钥",
+        show: (values) => values.use_online_api !== true,
+      },
+      {
+        key: "redirect_uri",
+        label: "重定向URI",
+        type: "text",
+        placeholder: "http://localhost",
+        defaultValue: "http://localhost",
+        show: (values) => values.use_online_api !== true,
+      },
+      { key: "is_sharepoint", label: "SharePoint 模式", type: "boolean", defaultValue: false },
+      {
+        key: "site_id",
+        label: "SharePoint 站点ID",
+        type: "text",
+        placeholder: "SharePoint 站点ID",
+        show: (values) => values.is_sharepoint === true,
+      },
+      { key: "root_folder_path", label: "根文件夹路径", type: "text", defaultValue: "/" },
+      { key: "chunk_size", label: "分块大小 (MB)", type: "text", defaultValue: "5" },
+      { key: "custom_host", label: "自定义下载主机", type: "text", placeholder: "可选：自定义下载域名" },
+    ],
+  },
+  gdrive: {
+    name: "Google Drive",
+    supportsMultipart: true,
+    fields: [
+      { key: "refresh_token", label: "刷新令牌", type: "textarea", required: true, placeholder: "Google OAuth 刷新令牌" },
+      { key: "client_id", label: "客户端ID", type: "text", required: true },
+      { key: "client_secret", label: "客户端密钥", type: "password", required: true },
+      { key: "root_folder_id", label: "根目录ID", type: "text", defaultValue: "root", placeholder: "默认 root" },
+    ],
+  },
+  alicloud: {
+    name: "阿里云盘",
+    supportsMultipart: true,
+    fields: [
+      {
+        key: "drive_type",
+        label: "驱动类型",
+        type: "select",
+        required: true,
+        options: [
+          { value: "resource", label: "资源库" },
+          { value: "backup", label: "备份盘" },
+          { value: "default", label: "默认" },
+        ],
+        defaultValue: "resource",
+      },
+      { key: "refresh_token", label: "刷新令牌", type: "textarea", required: true },
+      { key: "root_folder_id", label: "根目录ID", type: "text", defaultValue: "root" },
+      {
+        key: "order_by",
+        label: "排序方式",
+        type: "select",
+        options: [
+          { value: "name", label: "文件名" },
+          { value: "size", label: "文件大小" },
+          { value: "updated_at", label: "修改时间" },
+          { value: "created_at", label: "创建时间" },
+        ],
+        defaultValue: "name",
+      },
+      {
+        key: "order_direction",
+        label: "排序方向",
+        type: "select",
+        options: [
+          { value: "ASC", label: "升序" },
+          { value: "DESC", label: "降序" },
+        ],
+        defaultValue: "ASC",
+      },
+      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: false },
+      {
+        key: "api_address",
+        label: "在线API地址",
+        type: "text",
+        placeholder: "自建刷新接口地址",
+        show: (values) => values.use_online_api === true,
+      },
+      {
+        key: "client_id",
+        label: "客户端ID",
+        type: "text",
+        placeholder: "本地客户端ID",
+        show: (values) => values.use_online_api !== true,
+      },
+      {
+        key: "client_secret",
+        label: "客户端密钥",
+        type: "password",
+        placeholder: "本地客户端密钥",
+        show: (values) => values.use_online_api !== true,
+      },
+      {
+        key: "remove_way",
+        label: "删除方式",
+        type: "select",
+        options: [
+          { value: "trash", label: "移到回收站" },
+          { value: "delete", label: "直接删除" },
+        ],
+        defaultValue: "trash",
+      },
+      { key: "rapid_upload", label: "秒传", type: "boolean", defaultValue: false },
+      { key: "internal_upload", label: "内网上传", type: "boolean", defaultValue: false },
+      {
+        key: "livp_download_format",
+        label: "LIVP 下载格式",
+        type: "select",
+        options: [
+          { value: "jpeg", label: "JPEG" },
+          { value: "mov", label: "MOV" },
+        ],
+        defaultValue: "jpeg",
+      },
+      {
+        key: "alipan_type",
+        label: "云盘类型",
+        type: "select",
+        options: [
+          { value: "default", label: "默认" },
+          { value: "alipanTV", label: "阿里云盘TV" },
+        ],
+        defaultValue: "default",
+      },
+    ],
+  },
+  baiduyun: {
+    name: "百度网盘",
+    supportsMultipart: false,
+    fields: [
+      { key: "refresh_token", label: "刷新令牌", type: "textarea", required: true },
+      { key: "root_path", label: "根目录路径", type: "text", defaultValue: "/" },
+      {
+        key: "order_by",
+        label: "排序方式",
+        type: "select",
+        options: [
+          { value: "name", label: "文件名" },
+          { value: "time", label: "修改时间" },
+          { value: "size", label: "文件大小" },
+        ],
+        defaultValue: "name",
+      },
+      {
+        key: "order_direction",
+        label: "排序方向",
+        type: "select",
+        options: [
+          { value: "asc", label: "升序" },
+          { value: "desc", label: "降序" },
+        ],
+        defaultValue: "asc",
+      },
+      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: false },
+      {
+        key: "api_address",
+        label: "在线API地址",
+        type: "text",
+        placeholder: "自建刷新接口地址",
+        show: (values) => values.use_online_api === true,
+      },
+      {
+        key: "client_id",
+        label: "客户端ID",
+        type: "text",
+        placeholder: "本地客户端ID",
+        show: (values) => values.use_online_api !== true,
+      },
+      {
+        key: "client_secret",
+        label: "客户端密钥",
+        type: "password",
+        placeholder: "本地客户端密钥",
+        show: (values) => values.use_online_api !== true,
+      },
+    ],
+  },
+};
+
+function supportsMultipart(type?: string): boolean {
+  if (!type) {
+    return true;
+  }
+  if (type === "webdev") {
+    return false;
+  }
+  if (type === "s3") {
+    return true;
+  }
+  const config = driveConfigMap[type];
+  if (config) {
+    return config.supportsMultipart;
+  }
+  return false;
 }
 
 interface AuditLog {
@@ -205,6 +457,17 @@ function StorageModal({
   onSave: () => void;
   onCancel: () => void;
 }) {
+  const initConfig = (type: string, existing?: Record<string, any>) => {
+    const fields = driveConfigMap[type]?.fields || [];
+    const base = { ...(existing || {}) };
+    for (const field of fields) {
+      if (base[field.key] === undefined && field.defaultValue !== undefined) {
+        base[field.key] = field.defaultValue;
+      }
+    }
+    return base;
+  };
+
   const [formData, setFormData] = useState({
     name: storage?.name || "",
     type: storage?.type || "s3",
@@ -214,6 +477,7 @@ function StorageModal({
     secretAccessKey: "",
     bucket: storage?.bucket || "",
     basePath: storage?.basePath || "",
+    config: initConfig(storage?.type || "s3", storage?.config),
     isPublic: storage?.isPublic ?? false,
     guestList: storage?.guestList ?? false,
     guestDownload: storage?.guestDownload ?? false,
@@ -221,6 +485,102 @@ function StorageModal({
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const driveConfig = driveConfigMap[formData.type || ""];
+  const isS3 = formData.type === "s3";
+  const isWebdav = formData.type === "webdev";
+
+  const handleTypeChange = (nextType: string) => {
+    setFormData({
+      ...formData,
+      type: nextType,
+      endpoint: nextType === "s3" || nextType === "webdev" ? formData.endpoint : "",
+      region: nextType === "s3" ? formData.region : "auto",
+      accessKeyId: nextType === "s3" || nextType === "webdev" ? formData.accessKeyId : "",
+      secretAccessKey: "",
+      bucket: nextType === "s3" ? formData.bucket : "",
+      basePath: nextType === "s3" || nextType === "webdev" ? formData.basePath : "",
+      config: initConfig(nextType, {}),
+    });
+  };
+
+  const updateConfigValue = (key: string, value: string | number | boolean) => {
+    setFormData({
+      ...formData,
+      config: { ...(formData.config || {}), [key]: value },
+    });
+  };
+
+  const renderConfigField = (field: ConfigField) => {
+    const values = formData.config || {};
+    if (field.show && !field.show(values)) {
+      return null;
+    }
+
+    const commonClasses = "w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded";
+    const value = values[field.key] ?? "";
+
+    if (field.type === "boolean") {
+      return (
+        <label key={field.key} className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={Boolean(value)}
+            onChange={(e) => updateConfigValue(field.key, e.target.checked)}
+            className="w-4 h-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded"
+          />
+          <span className="text-sm text-zinc-700 dark:text-zinc-300 font-mono">{field.label}</span>
+          {field.help && <span className="text-xs text-zinc-500">{field.help}</span>}
+        </label>
+      );
+    }
+
+    if (field.type === "select") {
+      return (
+        <div key={field.key}>
+          <label className="block text-xs text-zinc-500 mb-1 font-mono">{field.label}{field.required ? " *" : ""}</label>
+          <select
+            value={String(value)}
+            onChange={(e) => updateConfigValue(field.key, e.target.value)}
+            className={commonClasses}
+            required={field.required}
+          >
+            {(field.options || []).map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    if (field.type === "textarea") {
+      return (
+        <div key={field.key}>
+          <label className="block text-xs text-zinc-500 mb-1 font-mono">{field.label}{field.required ? " *" : ""}</label>
+          <textarea
+            value={String(value)}
+            onChange={(e) => updateConfigValue(field.key, e.target.value)}
+            className={`${commonClasses} h-24`}
+            placeholder={field.placeholder || ""}
+            required={field.required}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div key={field.key}>
+        <label className="block text-xs text-zinc-500 mb-1 font-mono">{field.label}{field.required ? " *" : ""}</label>
+        <input
+          type={field.type}
+          value={String(value)}
+          onChange={(e) => updateConfigValue(field.key, e.target.value)}
+          className={commonClasses}
+          placeholder={field.placeholder || ""}
+          required={field.required}
+        />
+      </div>
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -229,9 +589,19 @@ function StorageModal({
 
     try {
       const method = storage ? "PUT" : "POST";
-      const body = storage ? { id: storage.id, ...formData } : formData;
+      const configToSend = { ...(formData.config || {}) };
+      if (driveConfig) {
+        for (const field of driveConfig.fields) {
+          if (field.type === "password" && !configToSend[field.key]) {
+            delete configToSend[field.key];
+          }
+        }
+      }
+      const body = storage
+        ? { id: storage.id, ...formData, config: configToSend }
+        : { ...formData, config: configToSend };
 
-      if (storage && !formData.secretAccessKey) {
+      if (storage && !formData.secretAccessKey && (isS3 || isWebdav)) {
         delete (body as Record<string, unknown>).secretAccessKey;
       }
 
@@ -278,28 +648,34 @@ function StorageModal({
               <label className="block text-xs text-zinc-500 mb-1 font-mono">存储类型 *</label>
               <select
                 value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                onChange={(e) => handleTypeChange(e.target.value)}
                 className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
                 required
               >
                 <option value="s3">S3 兼容服务</option>
                 <option value="webdev">WebDAV</option>
+                <option value="onedrive">OneDrive</option>
+                <option value="gdrive">Google Drive</option>
+                <option value="alicloud">阿里云盘</option>
+                <option value="baiduyun">百度网盘</option>
               </select>
             </div>
-            <div className="col-span-2">
-              <label className="block text-xs text-zinc-500 mb-1 font-mono">
-                {formData.type === "webdev" ? "WebDAV 服务器地址" : "Endpoint"} *
-              </label>
-              <input
-                type="url"
-                value={formData.endpoint}
-                onChange={(e) => setFormData({ ...formData, endpoint: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
-                placeholder={formData.type === "webdev" ? "https://example.com/webdav" : "https://s3.us-east-1.amazonaws.com"}
-                required
-              />
-            </div>
-            {formData.type === "s3" && (
+            {(isS3 || isWebdav) && (
+              <div className="col-span-2">
+                <label className="block text-xs text-zinc-500 mb-1 font-mono">
+                  {isWebdav ? "WebDAV 服务器地址" : "Endpoint"} *
+                </label>
+                <input
+                  type="url"
+                  value={formData.endpoint}
+                  onChange={(e) => setFormData({ ...formData, endpoint: e.target.value })}
+                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                  placeholder={isWebdav ? "https://example.com/webdav" : "https://s3.us-east-1.amazonaws.com"}
+                  required
+                />
+              </div>
+            )}
+            {isS3 && (
               <div>
                 <label className="block text-xs text-zinc-500 mb-1 font-mono">Region</label>
                 <input
@@ -311,7 +687,7 @@ function StorageModal({
                 />
               </div>
             )}
-            {formData.type === "s3" && (
+            {isS3 && (
               <div>
                 <label className="block text-xs text-zinc-500 mb-1 font-mono">Bucket *</label>
                 <input
@@ -320,44 +696,56 @@ function StorageModal({
                   onChange={(e) => setFormData({ ...formData, bucket: e.target.value })}
                   className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
                   placeholder="my-bucket"
-                  required={formData.type === "s3"}
+                  required={isS3}
                 />
               </div>
             )}
-            <div>
-              <label className="block text-xs text-zinc-500 mb-1 font-mono">
-                {formData.type === "webdev" ? "用户名" : "Access Key"} *
-              </label>
-              <input
-                type="text"
-                value={formData.accessKeyId}
-                onChange={(e) => setFormData({ ...formData, accessKeyId: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
-                required={!storage}
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-zinc-500 mb-1 font-mono">
-                {formData.type === "webdev" ? "密码" : "Secret Key"} {storage && "(留空保持)"}
-              </label>
-              <input
-                type="password"
-                value={formData.secretAccessKey}
-                onChange={(e) => setFormData({ ...formData, secretAccessKey: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
-                required={!storage}
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-xs text-zinc-500 mb-1 font-mono">根路径</label>
-              <input
-                type="text"
-                value={formData.basePath}
-                onChange={(e) => setFormData({ ...formData, basePath: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
-                placeholder="/path/to/folder"
-              />
-            </div>
+            {(isS3 || isWebdav) && (
+              <>
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1 font-mono">
+                    {isWebdav ? "用户名" : "Access Key"} *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.accessKeyId}
+                    onChange={(e) => setFormData({ ...formData, accessKeyId: e.target.value })}
+                    className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                    required={!storage && (isS3 || isWebdav)}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1 font-mono">
+                    {isWebdav ? "密码" : "Secret Key"} {storage && "(留空保持)"}
+                  </label>
+                  <input
+                    type="password"
+                    value={formData.secretAccessKey}
+                    onChange={(e) => setFormData({ ...formData, secretAccessKey: e.target.value })}
+                    className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                    required={!storage && (isS3 || isWebdav)}
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-zinc-500 mb-1 font-mono">根路径</label>
+                  <input
+                    type="text"
+                    value={formData.basePath}
+                    onChange={(e) => setFormData({ ...formData, basePath: e.target.value })}
+                    className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                    placeholder="/path/to/folder"
+                  />
+                </div>
+              </>
+            )}
+            {driveConfig && (
+              <div className="col-span-2 border-t border-zinc-200 dark:border-zinc-700 pt-3 mt-1">
+                <div className="text-xs text-zinc-500 mb-2 font-mono">驱动配置 - {driveConfig.name}</div>
+                <div className="space-y-3">
+                  {driveConfig.fields.map(renderConfigField)}
+                </div>
+              </div>
+            )}
             <div className="col-span-2">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
@@ -891,7 +1279,7 @@ function SettingsModal({
               </div>
               <div className="text-xs text-zinc-600 dark:text-zinc-400 font-mono space-y-2">
                 <p>S3 兼容存储聚合服务</p>
-                <p className="text-zinc-500">支持: AWS S3 / Cloudflare R2 / 阿里云 OSS / 腾讯云 COS / MinIO / WebDAV 等</p>
+                <p className="text-zinc-500">支持: AWS S3 / Cloudflare R2 / 阿里云 OSS / 腾讯云 COS / MinIO / WebDAV / OneDrive / Google Drive / 阿里云盘 / 百度网盘</p>
                 <p>作者: ooyyh</p>
                 <p>联系方式: 3266940347@qq.com</p>
               </div>
@@ -1553,8 +1941,8 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
       try {
         const uploadPath = path ? `${path}/${file.name}` : file.name;
 
-        // Use multipart upload for files larger than chunk size
-        if (file.size >= CHUNK_SIZE) {
+        const canMultipart = supportsMultipart(storage.type);
+        if (file.size >= CHUNK_SIZE && canMultipart) {
           await uploadMultipart(file, uploadPath, CHUNK_SIZE);
         } else {
           await uploadSingle(file, uploadPath);
@@ -1644,7 +2032,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
       const initRes = await fetch(`/api/files/${storage.id}/${uploadPath}?action=multipart-init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ contentType }),
+        body: JSON.stringify({ contentType, size: file.size, chunkSize }),
       });
 
       if (!initRes.ok) {

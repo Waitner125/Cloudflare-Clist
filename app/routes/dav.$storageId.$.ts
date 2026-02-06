@@ -1,7 +1,11 @@
 import type { Route } from "./+types/dav.$storageId.$";
-import { getStorageById, getAllStorages, initDatabase } from "~/lib/storage";
+import { getStorageById, getAllStorages, initDatabase, updateStorage } from "~/lib/storage";
 import { S3Client } from "~/lib/s3-client";
 import { WebdevClient } from "~/lib/webdev-client";
+import { OneDriveClient } from "~/lib/onedrive-client";
+import { GoogleDriveClient } from "~/lib/gdrive-client";
+import { AliyunDriveClient } from "~/lib/alicloud-client";
+import { BaiduYunClient } from "~/lib/baiduyun-client";
 
 // WebDAV server endpoint - provides WebDAV access to storages
 
@@ -140,6 +144,11 @@ function createUnauthorizedResponse(): Response {
   });
 }
 
+type StorageClient = S3Client | WebdevClient | OneDriveClient | GoogleDriveClient | AliyunDriveClient | BaiduYunClient;
+type StatefulClient = {
+  getStateUpdates: () => { config?: Record<string, any>; saving?: Record<string, any> } | null;
+};
+
 // Create storage client based on type
 function createClient(storage: {
   type: string;
@@ -149,7 +158,9 @@ function createClient(storage: {
   secretAccessKey: string;
   bucket: string;
   basePath: string;
-}): S3Client | WebdevClient {
+  config?: Record<string, any>;
+  saving?: Record<string, any>;
+}): StorageClient {
   if (storage.type === "webdev") {
     return new WebdevClient({
       endpoint: storage.endpoint,
@@ -157,6 +168,18 @@ function createClient(storage: {
       password: storage.secretAccessKey,
       basePath: storage.basePath,
     });
+  }
+  if (storage.type === "onedrive") {
+    return new OneDriveClient({ config: storage.config, saving: storage.saving });
+  }
+  if (storage.type === "gdrive") {
+    return new GoogleDriveClient({ config: storage.config, saving: storage.saving });
+  }
+  if (storage.type === "alicloud") {
+    return new AliyunDriveClient({ config: storage.config, saving: storage.saving });
+  }
+  if (storage.type === "baiduyun") {
+    return new BaiduYunClient({ config: storage.config, saving: storage.saving });
   }
   return new S3Client({
     endpoint: storage.endpoint,
@@ -166,6 +189,49 @@ function createClient(storage: {
     bucket: storage.bucket,
     basePath: storage.basePath,
   });
+}
+
+async function persistClientState(
+  client: StorageClient,
+  db: D1Database,
+  storageId: number
+): Promise<void> {
+  const stateful = client as unknown as StatefulClient;
+  if (typeof stateful.getStateUpdates !== "function") {
+    return;
+  }
+  const updates = stateful.getStateUpdates();
+  if (!updates) {
+    return;
+  }
+  const input: { config?: Record<string, any>; saving?: Record<string, any> } = {};
+  if (updates.config) {
+    input.config = updates.config;
+  }
+  if (updates.saving) {
+    input.saving = updates.saving;
+  }
+  if (Object.keys(input).length === 0) {
+    return;
+  }
+  await updateStorage(db, storageId, input);
+}
+
+async function withClientState<T>(
+  client: StorageClient,
+  db: D1Database,
+  storageId: number,
+  action: () => Promise<T>
+): Promise<T> {
+  try {
+    return await action();
+  } finally {
+    try {
+      await persistClientState(client, db, storageId);
+    } catch (error) {
+      console.error("Failed to persist storage state:", error);
+    }
+  }
 }
 
 // Handle all WebDAV methods via loader for GET, PROPFIND, etc.
@@ -272,7 +338,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   // PROPFIND - List directory contents
   if (method === "PROPFIND") {
     try {
-      const result = await client.listObjects(path);
+      const result = await withClientState(client, db, storageId, () => client.listObjects(path));
       const xml = generatePropfindResponse(result.objects, path, baseUrl);
       return new Response(xml, {
         status: 207,
@@ -292,7 +358,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       // Check if it's a directory
       if (path.endsWith("/") || path === "") {
         // Return a simple HTML directory listing for browser access
-        const result = await client.listObjects(path);
+        const result = await withClientState(client, db, storageId, () => client.listObjects(path));
         const html = `<!DOCTYPE html>
 <html>
 <head><title>Index of ${path || "/"}</title></head>
@@ -314,7 +380,7 @@ ${result.objects.map(obj =>
         });
       }
 
-      const response = await client.getObject(path);
+      const response = await withClientState(client, db, storageId, () => client.getObject(path));
       const contentType = response.headers.get("content-type") || getContentType(path);
       const contentLength = response.headers.get("content-length");
 
@@ -389,7 +455,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     try {
       const contentType = request.headers.get("content-type") || "application/octet-stream";
       const bodyBuffer = await request.arrayBuffer();
-      await client.putObject(path, bodyBuffer, contentType);
+      await withClientState(client, db, storageId, () => client.putObject(path, bodyBuffer, contentType));
       return new Response(null, { status: 201 });
     } catch (error) {
       console.error("PUT error:", error);
@@ -400,7 +466,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // DELETE - Delete file or folder
   if (method === "DELETE") {
     try {
-      await client.deleteObject(path);
+      await withClientState(client, db, storageId, () => client.deleteObject(path));
       return new Response(null, { status: 204 });
     } catch (error) {
       console.error("DELETE error:", error);
@@ -411,7 +477,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // MKCOL - Create directory
   if (method === "MKCOL") {
     try {
-      await client.createFolder(path);
+      await withClientState(client, db, storageId, () => client.createFolder(path));
       return new Response(null, { status: 201 });
     } catch (error) {
       console.error("MKCOL error:", error);
@@ -430,7 +496,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const destUrl = new URL(destinationHeader);
       const destPath = destUrl.pathname.replace(`/dav/${storageId}/`, "");
 
-      await client.copyObject(path, destPath);
+      await withClientState(client, db, storageId, () => client.copyObject(path, destPath));
       return new Response(null, { status: 201 });
     } catch (error) {
       console.error("COPY error:", error);
@@ -449,8 +515,18 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const destUrl = new URL(destinationHeader);
       const destPath = destUrl.pathname.replace(`/dav/${storageId}/`, "");
 
-      await client.copyObject(path, destPath);
-      await client.deleteObject(path);
+      const canDirectMove = typeof (client as { moveObject?: (path: string, destPath: string) => Promise<void> }).moveObject === "function";
+      if (canDirectMove) {
+        await withClientState(
+          client,
+          db,
+          storageId,
+          () => (client as { moveObject: (path: string, destPath: string) => Promise<void> }).moveObject(path, destPath)
+        );
+      } else {
+        await withClientState(client, db, storageId, () => client.copyObject(path, destPath));
+        await withClientState(client, db, storageId, () => client.deleteObject(path));
+      }
       return new Response(null, { status: 201 });
     } catch (error) {
       console.error("MOVE error:", error);

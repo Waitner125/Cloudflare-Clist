@@ -34,6 +34,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       storages: storages.map((s) => ({
         ...s,
         secretAccessKey: "***",
+        saving: {},
       })),
       isAdmin: true,
     });
@@ -190,6 +191,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 
     try {
       const storage = await createStorage(db, body as Parameters<typeof createStorage>[1]);
+      const { saving, ...safeStorage } = storage;
       await logAudit(db, {
         action: "storage.create",
         userType: "admin",
@@ -205,7 +207,7 @@ export async function action({ request, context }: Route.ActionArgs) {
           guestUpload: storage.guestUpload,
         },
       });
-      return Response.json({ storage: { ...storage, secretAccessKey: "***" } });
+      return Response.json({ storage: { ...safeStorage, secretAccessKey: "***" } });
     } catch (error) {
       return Response.json(
         { error: error instanceof Error ? error.message : "Failed to create storage" },
@@ -228,6 +230,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       if (!storage) {
         return Response.json({ error: "Storage not found" }, { status: 404 });
       }
+      const { saving, ...safeStorage } = storage;
       await logAudit(db, {
         action: "storage.update",
         userType: "admin",
@@ -243,7 +246,7 @@ export async function action({ request, context }: Route.ActionArgs) {
           guestUpload: storage.guestUpload,
         },
       });
-      return Response.json({ storage: { ...storage, secretAccessKey: "***" } });
+      return Response.json({ storage: { ...safeStorage, secretAccessKey: "***" } });
     } catch (error) {
       return Response.json(
         { error: error instanceof Error ? error.message : "Failed to update storage" },

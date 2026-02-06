@@ -1,10 +1,103 @@
 import type { Route } from "./+types/api.files.$storageId.$";
-import { getStorageById, initDatabase } from "~/lib/storage";
+import { getStorageById, initDatabase, updateStorage } from "~/lib/storage";
 import { requireAuth } from "~/lib/auth";
 import { getShareByToken } from "~/lib/shares";
 import { S3Client } from "~/lib/s3-client";
 import { WebdevClient } from "~/lib/webdev-client";
+import { OneDriveClient } from "~/lib/onedrive-client";
+import { GoogleDriveClient } from "~/lib/gdrive-client";
+import { AliyunDriveClient } from "~/lib/alicloud-client";
+import { BaiduYunClient } from "~/lib/baiduyun-client";
 import { getRequestMeta, logAudit } from "~/lib/audit";
+
+type StorageClient = S3Client | WebdevClient | OneDriveClient | GoogleDriveClient | AliyunDriveClient | BaiduYunClient;
+type StatefulClient = {
+  getStateUpdates: () => { config?: Record<string, any>; saving?: Record<string, any> } | null;
+};
+
+function createClient(storage: {
+  type: string;
+  endpoint: string;
+  region: string;
+  accessKeyId: string;
+  secretAccessKey: string;
+  bucket: string;
+  basePath: string;
+  config?: Record<string, any>;
+  saving?: Record<string, any>;
+}): StorageClient {
+  if (storage.type === "webdev") {
+    return new WebdevClient({
+      endpoint: storage.endpoint,
+      username: storage.accessKeyId,
+      password: storage.secretAccessKey,
+      basePath: storage.basePath,
+    });
+  }
+  if (storage.type === "onedrive") {
+    return new OneDriveClient({ config: storage.config, saving: storage.saving });
+  }
+  if (storage.type === "gdrive") {
+    return new GoogleDriveClient({ config: storage.config, saving: storage.saving });
+  }
+  if (storage.type === "alicloud") {
+    return new AliyunDriveClient({ config: storage.config, saving: storage.saving });
+  }
+  if (storage.type === "baiduyun") {
+    return new BaiduYunClient({ config: storage.config, saving: storage.saving });
+  }
+  return new S3Client({
+    endpoint: storage.endpoint,
+    region: storage.region,
+    accessKeyId: storage.accessKeyId,
+    secretAccessKey: storage.secretAccessKey,
+    bucket: storage.bucket,
+    basePath: storage.basePath,
+  });
+}
+
+async function persistClientState(
+  client: StorageClient,
+  db: D1Database,
+  storageId: number
+): Promise<void> {
+  const stateful = client as unknown as StatefulClient;
+  if (typeof stateful.getStateUpdates !== "function") {
+    return;
+  }
+  const updates = stateful.getStateUpdates();
+  if (!updates) {
+    return;
+  }
+  const input: { config?: Record<string, any>; saving?: Record<string, any> } = {};
+  if (updates.config) {
+    input.config = updates.config;
+  }
+  if (updates.saving) {
+    input.saving = updates.saving;
+  }
+  if (Object.keys(input).length === 0) {
+    return;
+  }
+  await updateStorage(db, storageId, input);
+}
+
+async function withClientState<T>(
+  client: StorageClient,
+  db: D1Database,
+  storageId: number,
+  action: () => Promise<T>
+): Promise<T> {
+  try {
+    return await action();
+  } finally {
+    try {
+      await persistClientState(client, db, storageId);
+    } catch (error) {
+      console.error("Failed to persist storage state:", error);
+    }
+  }
+}
 
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const db = context.cloudflare.env.DB;
@@ -62,32 +155,12 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     }
   }
 
-  // Create appropriate client based on storage type
-  type StorageClient = S3Client | WebdevClient;
-  let client: StorageClient;
-
-  if (storage.type === "webdev") {
-    client = new WebdevClient({
-      endpoint: storage.endpoint,
-      username: storage.accessKeyId,
-      password: storage.secretAccessKey,
-      basePath: storage.basePath,
-    });
-  } else {
-    client = new S3Client({
-      endpoint: storage.endpoint,
-      region: storage.region,
-      accessKeyId: storage.accessKeyId,
-      secretAccessKey: storage.secretAccessKey,
-      bucket: storage.bucket,
-      basePath: storage.basePath,
-    });
-  }
+  const client = createClient(storage);
 
   // List objects
   if (action === "list" || !action) {
     try {
-      const result = await client.listObjects(path);
+      const result = await withClientState(client, db, storageId, () => client.listObjects(path));
       return Response.json({
         storage: { id: storage.id, name: storage.name },
         path,
@@ -104,7 +177,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   // Download file
   if (action === "download") {
     try {
-      const response = await client.getObject(path);
+      const response = await withClientState(client, db, storageId, () => client.getObject(path));
       const contentType = response.headers.get("content-type") || "application/octet-stream";
       const contentLength = response.headers.get("content-length");
 
@@ -138,7 +211,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   // Get signed URL
   if (action === "signed-url") {
     try {
-      const signedUrl = await client.getSignedUrl(path);
+      const signedUrl = await withClientState(client, db, storageId, () => client.getSignedUrl(path));
       await logAudit(db, {
         action: "file.signed_url",
         userType,
@@ -159,7 +232,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   // Get file info (HEAD)
   if (action === "info") {
     try {
-      const info = await client.headObject(path);
+      const info = await withClientState(client, db, storageId, () => client.headObject(path));
       if (!info) {
         return Response.json({ error: "File not found" }, { status: 404 });
       }
@@ -211,34 +284,19 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
   }
 
-  // Create appropriate client based on storage type
-  type StorageClient = S3Client | WebdevClient;
-  let client: StorageClient;
-
-  if (storage.type === "webdev") {
-    client = new WebdevClient({
-      endpoint: storage.endpoint,
-      username: storage.accessKeyId,
-      password: storage.secretAccessKey,
-      basePath: storage.basePath,
-    });
-  } else {
-    client = new S3Client({
-      endpoint: storage.endpoint,
-      region: storage.region,
-      accessKeyId: storage.accessKeyId,
-      secretAccessKey: storage.secretAccessKey,
-      bucket: storage.bucket,
-      basePath: storage.basePath,
-    });
-  }
+  const client = createClient(storage);
 
   // Initialize multipart upload
   if (method === "POST" && action === "multipart-init") {
     try {
-      const body = await request.json() as { contentType?: string };
+      const body = await request.json() as { contentType?: string; size?: number; chunkSize?: number };
       const contentType = body.contentType || "application/octet-stream";
-      const uploadId = await client.initiateMultipartUpload(path, contentType);
+      const uploadId = await withClientState(
+        client,
+        db,
+        storageId,
+        () => client.initiateMultipartUpload(path, contentType, { size: body.size, chunkSize: body.chunkSize })
+      );
       await logAudit(db, {
         action: "file.multipart_init",
         userType,
@@ -269,10 +327,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         return Response.json({ error: "uploadId and partNumbers are required" }, { status: 400 });
       }
 
-      const urls: Record<number, string> = {};
-      for (const partNumber of body.partNumbers) {
-        urls[partNumber] = await client.getSignedUploadPartUrl(path, body.uploadId, partNumber);
-      }
+      const urls = await withClientState(client, db, storageId, async () => {
+        const result: Record<number, string> = {};
+        for (const partNumber of body.partNumbers) {
+          try {
+            result[partNumber] = await client.getSignedUploadPartUrl(path, body.uploadId, partNumber);
+          } catch {
+            // ignore and fallback to proxy upload
+          }
+        }
+        return result;
+      });
 
       return Response.json({ urls });
     } catch (error) {
@@ -298,7 +363,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
     try {
       const contentLength = parseInt(request.headers.get("content-length") || "0", 10);
-      const etag = await client.uploadPart(path, uploadId, partNumber, request.body, contentLength);
+      const etag = await withClientState(
+        client,
+        db,
+        storageId,
+        () => client.uploadPart(path, uploadId, partNumber, request.body as ReadableStream, contentLength)
+      );
       return Response.json({ etag, partNumber });
     } catch (error) {
       return Response.json(
@@ -320,7 +390,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         return Response.json({ error: "uploadId and parts are required" }, { status: 400 });
       }
 
-      await client.completeMultipartUpload(path, body.uploadId, body.parts);
+      await withClientState(
+        client,
+        db,
+        storageId,
+        () => client.completeMultipartUpload(path, body.uploadId, body.parts)
+      );
       await logAudit(db, {
         action: "file.multipart_complete",
         userType,
@@ -348,7 +423,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         return Response.json({ error: "uploadId is required" }, { status: 400 });
       }
 
-      await client.abortMultipartUpload(path, body.uploadId);
+      await withClientState(
+        client,
+        db,
+        storageId,
+        () => client.abortMultipartUpload(path, body.uploadId)
+      );
       await logAudit(db, {
         action: "file.multipart_abort",
         userType,
@@ -370,7 +450,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
   // Create folder
   if (method === "POST" && action === "mkdir") {
     try {
-      await client.createFolder(path);
+      await withClientState(client, db, storageId, () => client.createFolder(path));
       await logAudit(db, {
         action: "file.mkdir",
         userType,
@@ -405,6 +485,35 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         : "";
       const newPath = parentPath + newName + (isDirectory ? "/" : "");
 
+      const canDirectRename = typeof (client as { renameObject?: (path: string, name: string) => Promise<void> }).renameObject === "function";
+      if (canDirectRename) {
+        await withClientState(
+          client,
+          db,
+          storageId,
+          () => (client as { renameObject: (path: string, name: string) => Promise<void> }).renameObject(path, newName)
+        );
+        await logAudit(db, {
+          action: "file.rename",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { newPath, isDirectory },
+        });
+        await logAudit(db, {
+          action: "file.move",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { newPath, isDirectory },
+        });
+        return Response.json({ success: true, newPath });
+      }
+
       if (isDirectory) {
         // Rename folder: copy all objects with new prefix, then delete old ones
         const listAll = async (prefix: string): Promise<string[]> => {
@@ -412,7 +521,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           let continuationToken: string | undefined;
 
           do {
-            const result = await client.listObjects(prefix, "", 1000, continuationToken);
+            const result = await withClientState(
+              client,
+              db,
+              storageId,
+              () => client.listObjects(prefix, "", 1000, continuationToken)
+            );
             for (const obj of result.objects) {
               keys.push(obj.key);
             }
@@ -429,17 +543,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         // Copy all objects to new location
         for (const key of keysToMove) {
           const newKey = newPrefix + key.substring(oldPrefix.length);
-          await client.copyObject(key, newKey);
+          await withClientState(client, db, storageId, () => client.copyObject(key, newKey));
         }
 
         // Delete old objects
         for (const key of keysToMove) {
-          await client.deleteObject(key);
+          await withClientState(client, db, storageId, () => client.deleteObject(key));
         }
 
         // Try to delete the old folder object
         try {
-          await client.deleteObject(oldPrefix);
+          await withClientState(client, db, storageId, () => client.deleteObject(oldPrefix));
         } catch {
           // Ignore if not exists
         }
@@ -465,8 +579,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         return Response.json({ success: true, newPath: newPrefix, moved: keysToMove.length });
       } else {
         // Rename single file
-        await client.copyObject(path, newPath);
-        await client.deleteObject(path);
+        await withClientState(client, db, storageId, () => client.copyObject(path, newPath));
+        await withClientState(client, db, storageId, () => client.deleteObject(path));
         await logAudit(db, {
           action: "file.rename",
           userType,
@@ -515,6 +629,26 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const targetDir = destPath.endsWith("/") ? destPath : (destPath ? destPath + "/" : "");
       const newPath = targetDir + fileName + (isDirectory ? "/" : "");
 
+      const canDirectMove = typeof (client as { moveObject?: (path: string, destPath: string) => Promise<void> }).moveObject === "function";
+      if (canDirectMove) {
+        await withClientState(
+          client,
+          db,
+          storageId,
+          () => (client as { moveObject: (path: string, destPath: string) => Promise<void> }).moveObject(path, targetDir || "")
+        );
+        await logAudit(db, {
+          action: "file.move",
+          userType,
+          ip: meta.ip,
+          userAgent: meta.userAgent,
+          storageId,
+          path,
+          detail: { newPath, isDirectory },
+        });
+        return Response.json({ success: true, newPath });
+      }
+
       if (isDirectory) {
         // Move folder: copy all objects with new prefix, then delete old ones
         const listAll = async (prefix: string): Promise<string[]> => {
@@ -522,7 +656,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           let continuationToken: string | undefined;
 
           do {
-            const result = await client.listObjects(prefix, "", 1000, continuationToken);
+            const result = await withClientState(
+              client,
+              db,
+              storageId,
+              () => client.listObjects(prefix, "", 1000, continuationToken)
+            );
             for (const obj of result.objects) {
               keys.push(obj.key);
             }
@@ -539,17 +678,17 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         // Copy all objects to new location
         for (const key of keysToMove) {
           const newKey = newPrefix + key.substring(oldPrefix.length);
-          await client.copyObject(key, newKey);
+          await withClientState(client, db, storageId, () => client.copyObject(key, newKey));
         }
 
         // Delete old objects
         for (const key of keysToMove) {
-          await client.deleteObject(key);
+          await withClientState(client, db, storageId, () => client.deleteObject(key));
         }
 
         // Try to delete the old folder object
         try {
-          await client.deleteObject(oldPrefix);
+          await withClientState(client, db, storageId, () => client.deleteObject(oldPrefix));
         } catch {
           // Ignore if not exists
         }
@@ -566,8 +705,8 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         return Response.json({ success: true, newPath: newPrefix, moved: keysToMove.length });
       } else {
         // Move single file
-        await client.copyObject(path, newPath);
-        await client.deleteObject(path);
+        await withClientState(client, db, storageId, () => client.copyObject(path, newPath));
+        await withClientState(client, db, storageId, () => client.deleteObject(path));
         await logAudit(db, {
           action: "file.move",
           userType,
@@ -642,7 +781,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
       // Upload to S3
       const uploadPath = path ? `${path}/${finalFilename}` : finalFilename;
-      await client.putObject(uploadPath, bodyBuffer, contentType);
+      await withClientState(client, db, storageId, () => client.putObject(uploadPath, bodyBuffer, contentType));
       await logAudit(db, {
         action: "file.fetch",
         userType,
@@ -678,7 +817,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (bodyBuffer.byteLength === 0) {
         return Response.json({ error: "No file body provided" }, { status: 400 });
       }
-      await client.putObject(path, bodyBuffer, contentType);
+      await withClientState(client, db, storageId, () => client.putObject(path, bodyBuffer, contentType));
       await logAudit(db, {
         action: "file.upload",
         userType,
@@ -708,7 +847,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           let continuationToken: string | undefined;
 
           do {
-            const result = await client.listObjects(prefix, "/", 1000, continuationToken);
+            const result = await withClientState(
+              client,
+              db,
+              storageId,
+              () => client.listObjects(prefix, "/", 1000, continuationToken)
+            );
 
             // Add files
             for (const obj of result.objects) {
@@ -737,12 +881,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
         // Delete all objects
         for (const key of keysToDelete) {
-          await client.deleteObject(key);
+          await withClientState(client, db, storageId, () => client.deleteObject(key));
         }
 
         // Also try to delete the folder object itself
         try {
-          await client.deleteObject(path.endsWith("/") ? path : path + "/");
+          await withClientState(client, db, storageId, () => client.deleteObject(path.endsWith("/") ? path : path + "/"));
         } catch {
           // Folder object might not exist, ignore
         }
@@ -767,7 +911,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 
     // Single file deletion
     try {
-      await client.deleteObject(path);
+      await withClientState(client, db, storageId, () => client.deleteObject(path));
       await logAudit(db, {
         action: "file.delete",
         userType,

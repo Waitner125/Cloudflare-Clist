@@ -414,7 +414,11 @@ export class WebdevClient {
   }
 
   // WebDAV doesn't support multipart uploads, these are no-ops or alternatives
-  async initiateMultipartUpload(key: string, contentType: string): Promise<string> {
+  async initiateMultipartUpload(
+    key: string,
+    contentType: string,
+    _options?: { size?: number; chunkSize?: number }
+  ): Promise<string> {
     // Return a dummy upload ID - WebDAV doesn't have true multipart uploads
     // We'll use it as an indicator for PUT-based uploads
     return `webdev-${Date.now()}`;

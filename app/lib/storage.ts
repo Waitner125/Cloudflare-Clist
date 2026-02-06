@@ -8,6 +8,8 @@ export interface Storage {
   secretAccessKey: string;
   bucket: string;
   basePath: string;
+  config: Record<string, any>;
+  saving: Record<string, any>;
   isPublic: boolean;
   guestList: boolean;
   guestDownload: boolean;
@@ -19,12 +21,14 @@ export interface Storage {
 export interface StorageInput {
   name: string;
   type?: string;
-  endpoint: string;
+  endpoint?: string;
   region?: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  bucket: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  bucket?: string;
   basePath?: string;
+  config?: Record<string, any>;
+  saving?: Record<string, any>;
   isPublic?: boolean;
   guestList?: boolean;
   guestDownload?: boolean;
@@ -41,12 +45,26 @@ interface StorageRow {
   secret_access_key: string;
   bucket: string;
   base_path: string;
+  config_json: string | null;
+  saving_json: string | null;
   is_public: number;
   guest_list: number | null;
   guest_download: number | null;
   guest_upload: number | null;
   created_at: string;
   updated_at: string;
+}
+
+function safeParseJson(value: string | null): Record<string, any> {
+  if (!value) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(value) as Record<string, any>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
 }
 
 function rowToStorage(row: StorageRow): Storage {
@@ -60,6 +78,8 @@ function rowToStorage(row: StorageRow): Storage {
     secretAccessKey: row.secret_access_key?.trim() || "",
     bucket: row.bucket?.trim() || "",
     basePath: row.base_path?.trim() || "",
+    config: safeParseJson(row.config_json),
+    saving: safeParseJson(row.saving_json),
     isPublic: row.is_public === 1,
     guestList: row.guest_list === 1 || (row.guest_list === null && row.is_public === 1),
     guestDownload: row.guest_download === 1 || (row.guest_download === null && row.is_public === 1),
@@ -117,12 +137,14 @@ export async function createStorage(
   // Trim all string inputs to prevent signature mismatch errors
   const name = input.name.trim();
   const type = (input.type || "s3").trim();
-  const endpoint = input.endpoint.trim();
+  const endpoint = (input.endpoint || "").trim();
   const region = (input.region || "us-east-1").trim();
-  const accessKeyId = input.accessKeyId.trim();
-  const secretAccessKey = input.secretAccessKey.trim();
-  const bucket = input.bucket.trim();
+  const accessKeyId = (input.accessKeyId || "").trim();
+  const secretAccessKey = (input.secretAccessKey || "").trim();
+  const bucket = (input.bucket || "").trim();
   const basePath = (input.basePath || "").trim();
+  const configJson = JSON.stringify(input.config || {});
+  const savingJson = JSON.stringify(input.saving || {});
   const isPublic = input.isPublic ? 1 : 0;
   const guestList = input.guestList !== undefined ? (input.guestList ? 1 : 0) : isPublic;
   const guestDownload = input.guestDownload !== undefined ? (input.guestDownload ? 1 : 0) : isPublic;
@@ -130,8 +152,8 @@ export async function createStorage(
 
   const result = await db
     .prepare(
-      `INSERT INTO storages (name, type, endpoint, region, access_key_id, secret_access_key, bucket, base_path, is_public, guest_list, guest_download, guest_upload)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO storages (name, type, endpoint, region, access_key_id, secret_access_key, bucket, base_path, config_json, saving_json, is_public, guest_list, guest_download, guest_upload)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -143,6 +165,8 @@ export async function createStorage(
       secretAccessKey,
       bucket,
       basePath,
+      configJson,
+      savingJson,
       isPublic,
       guestList,
       guestDownload,
@@ -202,6 +226,18 @@ export async function updateStorage(
   if (input.basePath !== undefined) {
     updates.push("base_path = ?");
     values.push(input.basePath.trim());
+  }
+  if (input.config !== undefined) {
+    const mergedConfig = {
+      ...(existing.config || {}),
+      ...(input.config || {}),
+    };
+    updates.push("config_json = ?");
+    values.push(JSON.stringify(mergedConfig));
+  }
+  if (input.saving !== undefined) {
+    updates.push("saving_json = ?");
+    values.push(JSON.stringify(input.saving || {}));
   }
   if (input.isPublic !== undefined) {
     updates.push("is_public = ?");
@@ -265,6 +301,8 @@ export interface StorageBackupItem {
   secretAccessKey: string;
   bucket: string;
   basePath: string;
+  config?: Record<string, any>;
+  saving?: Record<string, any>;
   isPublic: boolean;
   guestList: boolean;
   guestDownload: boolean;
@@ -293,6 +331,8 @@ export async function exportStoragesForBackup(db: D1Database): Promise<BackupDat
       secretAccessKey: s.secretAccessKey,
       bucket: s.bucket,
       basePath: s.basePath,
+      config: s.config || {},
+      saving: s.saving || {},
       isPublic: s.isPublic,
       guestList: s.guestList,
       guestDownload: s.guestDownload,
@@ -338,6 +378,8 @@ export async function importStoragesFromBackup(
         secretAccessKey: item.secretAccessKey,
         bucket: item.bucket,
         basePath: item.basePath,
+        config: item.config || {},
+        saving: item.saving || {},
         isPublic: item.isPublic,
         guestList: item.guestList,
         guestDownload: item.guestDownload,
