@@ -122,6 +122,10 @@ npm run build
 wrangler deploy
 ```
 
+### GitHub Actions Deployment
+
+See the GitHub Actions workflow guide: [GITHUB_WORKFLOW_DEPLOY.md](./GITHUB_WORKFLOW_DEPLOY.md)
+
 ## Environment Variables
 
 The application uses the following environment variables:
