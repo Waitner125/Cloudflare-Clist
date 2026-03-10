@@ -225,3 +225,7 @@ For support, please contact:
 ## License
 
 This project is licensed under the terms specified in the repository.
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/image?repos=ooyyh/Cloudflare-Clist.git,ooyyh/Cloudflare-Clist&type=date&legend=top-left)](https://www.star-history.com/?repos=ooyyh%2FCloudflare-Clist.git%2Cooyyh%2FCloudflare-Clist&type=date&legend=top-left)
