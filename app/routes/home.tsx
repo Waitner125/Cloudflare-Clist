@@ -3169,6 +3169,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                       : "border-transparent hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
                   }`}
                   onClick={() => setSelectedStorage(s)}
+                  onTouchStart={() => setSelectedStorage(s)}
                 >
                   <div className="min-w-0">
                     <div className={`text-sm font-mono truncate ${selectedStorage?.id === s.id ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>
@@ -3179,7 +3180,12 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     </div>
                   </div>
                   {isAdmin && (
-                    <div className="hidden group-hover:flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                    <div 
+                        className={`${
+                          true ? "flex" : "hidden"
+                        } items-center gap-1`}
+                        onClick={(e) => e.stopPropagation()}
+                     >
                       <button
                         onClick={() => { setStatsStorage(s); setShowStats(true); }}
                         className="text-zinc-400 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-xs px-1"
