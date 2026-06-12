@@ -162,12 +162,27 @@ Once enabled, access your storages via:
 - All storages root: `https://your-domain/dav/0/`
 - Specific storage: `https://your-domain/dav/{storage_id}/`
 
+⚠️ **Important**: URLs must end with a trailing slash `/`
+
+**Example**:
+- ✅ Correct: `https://your-domain/dav/11/`
+- ❌ Wrong: `https://your-domain/dav/11`
+
 ### Client Connection
 
-- **Windows**: Map network drive with WebDAV URL
+- **Windows**: Map network drive with WebDAV URL (recommended: RaiDrive, NetDrive)
 - **macOS**: Finder → Go → Connect to Server
 - **Linux**: Use davfs2 or file manager
 - **Mobile**: Use any WebDAV-compatible file manager app
+
+### Troubleshooting
+
+If you encounter a `405 Method Not Allowed` error:
+1. Ensure `WEBDAV_ENABLED` is set to the string `"true"` (not boolean)
+2. Make sure the URL ends with `/`
+3. Verify authentication credentials
+
+For detailed setup and troubleshooting, see [WebDAV Setup Guide](./docs/WEBDAV_SETUP.md)
 
 ## Database Schema
 

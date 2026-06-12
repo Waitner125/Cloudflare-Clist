@@ -1,8 +1,8 @@
-# WebDAV Setup
+# WebDAV 快速配置
 
-## Enabling WebDAV
+## 启用 WebDAV
 
-Set the following in Cloudflare Workers environment variables:
+在 Cloudflare Workers 环境变量中设置：
 
 ```json
 {
@@ -14,29 +14,76 @@ Set the following in Cloudflare Workers environment variables:
 }
 ```
 
-> `WEBDAV_USERNAME` and `WEBDAV_PASSWORD` are optional. If not set, the admin credentials will be used.
+> `WEBDAV_USERNAME` 和 `WEBDAV_PASSWORD` 是可选的。如果不设置，将使用管理员凭据。
 
-## WebDAV Access URLs
+## WebDAV 访问 URL
 
-Once enabled, access your storages via:
+启用后，通过以下方式访问存储：
 
-- All storages root: `https://your-domain/dav/0/`
-- Specific storage: `https://your-domain/dav/{storage_id}/`
+- 所有存储根目录: `https://your-domain/dav/0/`
+- 特定存储: `https://your-domain/dav/{storage_id}/`
 
-## Client Connection
+⚠️ **重要**: URL 必须以斜杠 `/` 结尾！
+
+例如：
+- ✅ 正确：`https://your-domain/dav/11/`
+- ❌ 错误：`https://your-domain/dav/11`
+
+## 客户端连接
 
 ### Windows
 
-Map a network drive using the WebDAV URL.
+映射网络驱动器，使用 WebDAV URL。
+
+**推荐第三方客户端**：
+- RaiDrive
+- NetDrive
+- Cyberduck
 
 ### macOS
 
-Finder → Go → Connect to Server, enter the WebDAV URL.
+Finder → 前往 → 连接到服务器，输入 WebDAV URL。
 
 ### Linux
 
-Use `davfs2` or your file manager's built-in WebDAV support.
+使用 `davfs2` 或文件管理器的内置 WebDAV 支持。
 
-### Mobile
+### 移动设备
 
-Use any WebDAV-compatible file manager app (e.g., Documents, FE File Explorer).
+使用任何支持 WebDAV 的文件管理器应用（例如：Documents、FE File Explorer）。
+
+## 故障排查
+
+### 错误 405 Method Not Allowed
+
+**原因**：
+1. `WEBDAV_ENABLED` 未设置为 `"true"`
+2. URL 格式不正确（缺少尾部斜杠）
+3. WebDAV 功能未正确部署
+
+**解决方案**：
+1. 确认环境变量 `WEBDAV_ENABLED = "true"`（必须是字符串）
+2. 确保 URL 以 `/` 结尾
+3. 重新部署 Worker
+
+### 测试连接
+
+```bash
+# 测试 WebDAV 是否启用
+curl -i -X OPTIONS https://your-domain/dav/11/
+
+# 应该返回：
+# DAV: 1, 2
+# Allow: OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, MKCOL, COPY, MOVE
+
+# 测试认证和列表
+curl -i -X PROPFIND \
+  -H "Authorization: Basic $(echo -n 'username:password' | base64)" \
+  -H "Depth: 1" \
+  https://your-domain/dav/11/
+```
+
+## 完整文档
+
+更多配置选项、客户端设置和故障排查，请参阅 [完整 WebDAV 配置指南](./WEBDAV_SETUP.md)。
+

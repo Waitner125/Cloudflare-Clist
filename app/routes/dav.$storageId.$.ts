@@ -15,12 +15,20 @@ function generatePropfindResponse(
   baseUrl: string
 ): string {
   const xmlResponses: string[] = [];
+  const joinHref = (...parts: string[]) => {
+    const path = parts
+      .map((part, index) => index === 0 ? part.replace(/\/+$/, "") : part.replace(/^\/+|\/+$/g, ""))
+      .filter(Boolean)
+      .join("/");
+    return path || "/";
+  };
+  const collectionHref = (href: string) => href.endsWith("/") ? href : `${href}/`;
 
   // Add the current directory itself
-  const currentHref = baseUrl + (requestPath ? `/${requestPath}` : "");
+  const currentHref = joinHref(baseUrl, requestPath);
   xmlResponses.push(`
     <D:response>
-      <D:href>${escapeXml(currentHref.endsWith("/") ? currentHref : currentHref + "/")}</D:href>
+      <D:href>${escapeXml(collectionHref(currentHref))}</D:href>
       <D:propstat>
         <D:prop>
           <D:resourcetype><D:collection/></D:resourcetype>
@@ -32,12 +40,12 @@ function generatePropfindResponse(
     </D:response>`);
 
   for (const obj of objects) {
-    const href = baseUrl + (requestPath ? `/${requestPath}` : "") + "/" + obj.name;
+    const href = joinHref(baseUrl, obj.key || joinHref(requestPath, obj.name));
     
     if (obj.isDirectory) {
       xmlResponses.push(`
     <D:response>
-      <D:href>${escapeXml(href.endsWith("/") ? href : href + "/")}</D:href>
+      <D:href>${escapeXml(collectionHref(href))}</D:href>
       <D:propstat>
         <D:prop>
           <D:resourcetype><D:collection/></D:resourcetype>
@@ -234,10 +242,14 @@ async function withClientState<T>(
   }
 }
 
-// Handle all WebDAV methods via loader for GET, PROPFIND, etc.
-export async function loader({ request, params, context }: Route.LoaderArgs) {
+// Unified WebDAV request handler
+export async function handleWebdavRequest(
+  request: Request,
+  params: { storageId?: string; "*"?: string },
+  context: any
+): Promise<Response> {
   const method = request.method.toUpperCase();
-  
+
   // Handle OPTIONS for WebDAV discovery
   if (method === "OPTIONS") {
     return new Response(null, {
@@ -246,14 +258,17 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         DAV: "1, 2",
         Allow: "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, MKCOL, COPY, MOVE",
         "MS-Author-Via": "DAV",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "OPTIONS, GET, HEAD, PUT, DELETE, PROPFIND, MKCOL, COPY, MOVE",
+        "Access-Control-Allow-Headers": "Authorization, Content-Type, Depth, Destination, Overwrite",
       },
     });
   }
 
   const db = context.cloudflare.env.DB;
-  const env = context.cloudflare.env as { 
+  const env = context.cloudflare.env as {
     WEBDAV_ENABLED?: string;
-    WEBDAV_USERNAME?: string; 
+    WEBDAV_USERNAME?: string;
     WEBDAV_PASSWORD?: string;
     ADMIN_USERNAME?: string;
     ADMIN_PASSWORD?: string;
@@ -283,7 +298,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       const baseUrl = url.pathname.replace(/\/$/, "");
 
       const xmlResponses: string[] = [];
-      
+
       // Root collection
       xmlResponses.push(`
     <D:response>
@@ -320,9 +335,16 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         status: 207,
         headers: {
           "Content-Type": "application/xml; charset=utf-8",
+          "DAV": "1, 2",
         },
       });
     }
+
+    // Root doesn't support modification
+    if (["PUT", "DELETE", "MKCOL", "COPY", "MOVE"].includes(method)) {
+      return new Response("Cannot modify root", { status: 403 });
+    }
+
     return new Response("Method not allowed", { status: 405 });
   }
 
@@ -335,6 +357,98 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const baseUrl = `/dav/${storageId}`;
 
+  // Handle modification methods
+  if (["PUT", "DELETE", "MKCOL", "COPY", "MOVE"].includes(method)) {
+    // PUT - Upload file
+    if (method === "PUT") {
+      try {
+        const contentType = request.headers.get("content-type") || "application/octet-stream";
+        const bodyBuffer = await request.arrayBuffer();
+        await withClientState(client, db, storageId, () => client.putObject(path, bodyBuffer, contentType));
+        return new Response(null, { status: 201 });
+      } catch (error) {
+        console.error("PUT error:", error);
+        return new Response("Failed to upload file", { status: 500 });
+      }
+    }
+
+    // DELETE - Delete file or folder
+    if (method === "DELETE") {
+      try {
+        await withClientState(client, db, storageId, () => client.deleteObject(path));
+        return new Response(null, { status: 204 });
+      } catch (error) {
+        console.error("DELETE error:", error);
+        return new Response("Failed to delete", { status: 500 });
+      }
+    }
+
+    // MKCOL - Create directory
+    if (method === "MKCOL") {
+      try {
+        await withClientState(client, db, storageId, () => client.createFolder(path));
+        return new Response(null, { status: 201 });
+      } catch (error) {
+        console.error("MKCOL error:", error);
+        try {
+          await withClientState(client, db, storageId, () => client.listObjects(path));
+          return new Response(null, { status: 204 });
+        } catch {
+          return new Response("Failed to create directory", { status: 500 });
+        }
+      }
+    }
+
+    // COPY - Copy file
+    if (method === "COPY") {
+      try {
+        const destinationHeader = request.headers.get("Destination");
+        if (!destinationHeader) {
+          return new Response("Destination header required", { status: 400 });
+        }
+
+        const destUrl = new URL(destinationHeader);
+        const destPath = destUrl.pathname.replace(`/dav/${storageId}/`, "");
+
+        await withClientState(client, db, storageId, () => client.copyObject(path, destPath));
+        return new Response(null, { status: 201 });
+      } catch (error) {
+        console.error("COPY error:", error);
+        return new Response("Failed to copy", { status: 500 });
+      }
+    }
+
+    // MOVE - Move file
+    if (method === "MOVE") {
+      try {
+        const destinationHeader = request.headers.get("Destination");
+        if (!destinationHeader) {
+          return new Response("Destination header required", { status: 400 });
+        }
+
+        const destUrl = new URL(destinationHeader);
+        const destPath = destUrl.pathname.replace(`/dav/${storageId}/`, "");
+
+        const canDirectMove = typeof (client as { moveObject?: (path: string, destPath: string) => Promise<void> }).moveObject === "function";
+        if (canDirectMove) {
+          await withClientState(
+            client,
+            db,
+            storageId,
+            () => (client as { moveObject: (path: string, destPath: string) => Promise<void> }).moveObject(path, destPath)
+          );
+        } else {
+          await withClientState(client, db, storageId, () => client.copyObject(path, destPath));
+          await withClientState(client, db, storageId, () => client.deleteObject(path));
+        }
+        return new Response(null, { status: 201 });
+      } catch (error) {
+        console.error("MOVE error:", error);
+        return new Response("Failed to move", { status: 500 });
+      }
+    }
+  }
+
   // PROPFIND - List directory contents
   if (method === "PROPFIND") {
     try {
@@ -344,6 +458,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         status: 207,
         headers: {
           "Content-Type": "application/xml; charset=utf-8",
+          "DAV": "1, 2",
         },
       });
     } catch (error) {
@@ -410,129 +525,12 @@ ${result.objects.map(obj =>
   return new Response("Method not allowed", { status: 405 });
 }
 
+// Handle all WebDAV methods via loader for GET, PROPFIND, etc.
+export async function loader({ request, params, context }: Route.LoaderArgs) {
+  return handleWebdavRequest(request, params, context);
+}
+
 // Handle modification methods via action
 export async function action({ request, params, context }: Route.ActionArgs) {
-  const method = request.method.toUpperCase();
-
-  const db = context.cloudflare.env.DB;
-  const env = context.cloudflare.env as { 
-    WEBDAV_ENABLED?: string;
-    WEBDAV_USERNAME?: string; 
-    WEBDAV_PASSWORD?: string;
-    ADMIN_USERNAME?: string;
-    ADMIN_PASSWORD?: string;
-  };
-
-  // Check if WebDAV is enabled
-  if (env.WEBDAV_ENABLED !== "true") {
-    return new Response("WebDAV is disabled", { status: 403 });
-  }
-
-  // Validate authentication
-  const isAuthenticated = await validateWebdavAuth(request, env);
-  if (!isAuthenticated) {
-    return createUnauthorizedResponse();
-  }
-
-  await initDatabase(db);
-
-  const storageId = parseInt(params.storageId || "0", 10);
-  const path = params["*"] || "";
-
-  if (storageId === 0) {
-    return new Response("Cannot modify root", { status: 403 });
-  }
-
-  const storage = await getStorageById(db, storageId);
-  if (!storage) {
-    return new Response("Storage not found", { status: 404 });
-  }
-
-  const client = createClient(storage);
-
-  // PUT - Upload file
-  if (method === "PUT") {
-    try {
-      const contentType = request.headers.get("content-type") || "application/octet-stream";
-      const bodyBuffer = await request.arrayBuffer();
-      await withClientState(client, db, storageId, () => client.putObject(path, bodyBuffer, contentType));
-      return new Response(null, { status: 201 });
-    } catch (error) {
-      console.error("PUT error:", error);
-      return new Response("Failed to upload file", { status: 500 });
-    }
-  }
-
-  // DELETE - Delete file or folder
-  if (method === "DELETE") {
-    try {
-      await withClientState(client, db, storageId, () => client.deleteObject(path));
-      return new Response(null, { status: 204 });
-    } catch (error) {
-      console.error("DELETE error:", error);
-      return new Response("Failed to delete", { status: 500 });
-    }
-  }
-
-  // MKCOL - Create directory
-  if (method === "MKCOL") {
-    try {
-      await withClientState(client, db, storageId, () => client.createFolder(path));
-      return new Response(null, { status: 201 });
-    } catch (error) {
-      console.error("MKCOL error:", error);
-      return new Response("Failed to create directory", { status: 500 });
-    }
-  }
-
-  // COPY - Copy file
-  if (method === "COPY") {
-    try {
-      const destinationHeader = request.headers.get("Destination");
-      if (!destinationHeader) {
-        return new Response("Destination header required", { status: 400 });
-      }
-
-      const destUrl = new URL(destinationHeader);
-      const destPath = destUrl.pathname.replace(`/dav/${storageId}/`, "");
-
-      await withClientState(client, db, storageId, () => client.copyObject(path, destPath));
-      return new Response(null, { status: 201 });
-    } catch (error) {
-      console.error("COPY error:", error);
-      return new Response("Failed to copy", { status: 500 });
-    }
-  }
-
-  // MOVE - Move file
-  if (method === "MOVE") {
-    try {
-      const destinationHeader = request.headers.get("Destination");
-      if (!destinationHeader) {
-        return new Response("Destination header required", { status: 400 });
-      }
-
-      const destUrl = new URL(destinationHeader);
-      const destPath = destUrl.pathname.replace(`/dav/${storageId}/`, "");
-
-      const canDirectMove = typeof (client as { moveObject?: (path: string, destPath: string) => Promise<void> }).moveObject === "function";
-      if (canDirectMove) {
-        await withClientState(
-          client,
-          db,
-          storageId,
-          () => (client as { moveObject: (path: string, destPath: string) => Promise<void> }).moveObject(path, destPath)
-        );
-      } else {
-        await withClientState(client, db, storageId, () => client.copyObject(path, destPath));
-        await withClientState(client, db, storageId, () => client.deleteObject(path));
-      }
-      return new Response(null, { status: 201 });
-    } catch (error) {
-      console.error("MOVE error:", error);
-      return new Response("Failed to move", { status: 500 });
-    }
-  }
-
-  return new Response("Method not allowed", { status: 405 });
+  return handleWebdavRequest(request, params, context);
 }
