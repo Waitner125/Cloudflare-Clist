@@ -112,11 +112,12 @@ const driveConfigMap: Record<string, { name: string; supportsMultipart: boolean;
         defaultValue: "global",
       },
       { key: "refresh_token", label: "刷新令牌", type: "textarea", required: true, placeholder: "Microsoft OAuth 刷新令牌" },
-      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: false },
+      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: true },
       {
         key: "api_address",
         label: "在线API地址",
         type: "text",
+        defaultValue: "https://api.oplist.org/onedrive/renewapi",
         placeholder: "自建刷新接口地址",
         show: (values) => values.use_online_api === true,
       },
@@ -138,8 +139,8 @@ const driveConfigMap: Record<string, { name: string; supportsMultipart: boolean;
         key: "redirect_uri",
         label: "重定向URI",
         type: "text",
-        placeholder: "http://localhost",
-        defaultValue: "http://localhost",
+        placeholder: "https://api.oplist.org/onedrive/callback",
+        defaultValue: "https://api.oplist.org/onedrive/callback",
         show: (values) => values.use_online_api !== true,
       },
       { key: "is_sharepoint", label: "SharePoint 模式", type: "boolean", defaultValue: false },
@@ -160,9 +161,42 @@ const driveConfigMap: Record<string, { name: string; supportsMultipart: boolean;
     supportsMultipart: true,
     fields: [
       { key: "refresh_token", label: "刷新令牌", type: "textarea", required: true, placeholder: "Google OAuth 刷新令牌" },
-      { key: "client_id", label: "客户端ID", type: "text", required: true },
-      { key: "client_secret", label: "客户端密钥", type: "password", required: true },
+      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: true },
+      {
+        key: "api_address",
+        label: "在线API地址",
+        type: "text",
+        defaultValue: "https://api.oplist.org/googleui/renewapi",
+        placeholder: "自建刷新接口地址",
+        show: (values) => values.use_online_api === true,
+      },
+      {
+        key: "client_id",
+        label: "客户端ID",
+        type: "text",
+        placeholder: "本地客户端ID",
+        show: (values) => values.use_online_api !== true,
+      },
+      {
+        key: "client_secret",
+        label: "客户端密钥",
+        type: "password",
+        placeholder: "本地客户端密钥",
+        show: (values) => values.use_online_api !== true,
+      },
       { key: "root_folder_id", label: "根目录ID", type: "text", defaultValue: "root", placeholder: "默认 root" },
+      { key: "order_by", label: "排序字段", type: "text", defaultValue: "folder,name,modifiedTime", placeholder: "folder,name,modifiedTime" },
+      {
+        key: "order_direction",
+        label: "排序方向",
+        type: "select",
+        options: [
+          { value: "asc", label: "升序" },
+          { value: "desc", label: "降序" },
+        ],
+        defaultValue: "asc",
+      },
+      { key: "chunk_size", label: "分块大小 (MB)", type: "text", defaultValue: "5" },
     ],
   },
   alicloud: {
@@ -205,11 +239,12 @@ const driveConfigMap: Record<string, { name: string; supportsMultipart: boolean;
         ],
         defaultValue: "ASC",
       },
-      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: false },
+      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: true },
       {
         key: "api_address",
         label: "在线API地址",
         type: "text",
+        defaultValue: "https://api.oplist.org/alicloud/renewapi",
         placeholder: "自建刷新接口地址",
         show: (values) => values.use_online_api === true,
       },
@@ -288,11 +323,12 @@ const driveConfigMap: Record<string, { name: string; supportsMultipart: boolean;
         ],
         defaultValue: "asc",
       },
-      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: false },
+      { key: "use_online_api", label: "使用在线API", type: "boolean", defaultValue: true },
       {
         key: "api_address",
         label: "在线API地址",
         type: "text",
+        defaultValue: "https://api.oplist.org/baiduyun/renewapi",
         placeholder: "自建刷新接口地址",
         show: (values) => values.use_online_api === true,
       },
@@ -364,6 +400,40 @@ function formatDate(dateStr: string): string {
   if (!dateStr) return "-";
   const date = new Date(dateStr);
   return date.toLocaleString("zh-CN");
+}
+
+function StatsIcon({ className = "h-4 w-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
+      <path
+        d="M5 19h14"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        opacity="0.75"
+      />
+      <path
+        d="M7 16v-3.5M12 16V8M17 16v-5"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M5.5 10.5 9 7l3.2 3.2 5.7-5.7"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M16.5 4.5h1.9v1.9"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 function LoginModal({ onLogin, onClose }: { onLogin: () => void; onClose: () => void }) {
@@ -460,10 +530,17 @@ function StorageModal({
   const initConfig = (type: string, existing?: Record<string, any>) => {
     const fields = driveConfigMap[type]?.fields || [];
     const base = { ...(existing || {}) };
+    if (base.api_address === undefined && base.api_url_address !== undefined) {
+      base.api_address = base.api_url_address;
+    }
     for (const field of fields) {
       if (base[field.key] === undefined && field.defaultValue !== undefined) {
         base[field.key] = field.defaultValue;
       }
+    }
+    const hasLocalClient = Boolean(String(base.client_id || "").trim() && String(base.client_secret || "").trim());
+    if (fields.some((field) => field.key === "use_online_api") && !hasLocalClient) {
+      base.use_online_api = true;
     }
     return base;
   };
@@ -590,6 +667,9 @@ function StorageModal({
     try {
       const method = storage ? "PUT" : "POST";
       const configToSend = { ...(formData.config || {}) };
+      if (configToSend.api_address && !configToSend.api_url_address) {
+        configToSend.api_url_address = configToSend.api_address;
+      }
       if (driveConfig) {
         for (const field of driveConfig.fields) {
           if (field.type === "password" && !configToSend[field.key]) {
@@ -1329,6 +1409,22 @@ interface StorageStats {
   typeDistribution: Record<string, { count: number; size: number }>;
 }
 
+const chartColors = ["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#84cc16", "#ec4899", "#64748b", "#14b8a6"];
+
+function buildConicGradient(items: Array<{ percentage: number; color: string }>): string {
+  if (items.length === 0) {
+    return "conic-gradient(#d4d4d8 0deg 360deg)";
+  }
+  let start = 0;
+  const stops = items.map((item) => {
+    const end = start + item.percentage * 3.6;
+    const stop = `${item.color} ${start.toFixed(2)}deg ${end.toFixed(2)}deg`;
+    start = end;
+    return stop;
+  });
+  return `conic-gradient(${stops.join(", ")})`;
+}
+
 function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose: () => void }) {
   const [stats, setStats] = useState<StorageStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1359,15 +1455,45 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
   const sortedTypes = stats
     ? Object.entries(stats.typeDistribution)
         .sort((a, b) => b[1].size - a[1].size)
-        .slice(0, 10)
     : [];
+  const chartItems = stats
+    ? (() => {
+        const topTypes = sortedTypes.slice(0, 10);
+        const items = topTypes.map(([ext, data], index) => ({
+          ext,
+          count: data.count,
+          size: data.size,
+          percentage: stats.totalSize > 0 ? (data.size / stats.totalSize) * 100 : 0,
+          color: chartColors[index % chartColors.length],
+        }));
+        const shownSize = topTypes.reduce((sum, [, data]) => sum + data.size, 0);
+        const shownCount = topTypes.reduce((sum, [, data]) => sum + data.count, 0);
+        const restSize = stats.totalSize - shownSize;
+        const restCount = stats.fileCount - shownCount;
+        if (restSize > 0 || restCount > 0) {
+          items.push({
+            ext: "other",
+            count: Math.max(0, restCount),
+            size: Math.max(0, restSize),
+            percentage: stats.totalSize > 0 ? (Math.max(0, restSize) / stats.totalSize) * 100 : 0,
+            color: chartColors[items.length % chartColors.length],
+          });
+        }
+        return items;
+      })()
+    : [];
+  const donutGradient = buildConicGradient(chartItems.map(({ percentage, color }) => ({ percentage, color })));
+  const dominantType = chartItems[0];
 
   return (
     <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-2xl max-h-[80vh] rounded-lg shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-3xl max-h-[84vh] rounded-lg shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
           <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm flex items-center gap-2">
-            <span className="text-blue-500">📊</span> 存储统计 - {storage.name}
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-blue-200 bg-blue-50 text-blue-600 shadow-sm dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300">
+              <StatsIcon className="h-[18px] w-[18px]" />
+            </span>
+            存储统计 - {storage.name}
           </span>
           <button onClick={onClose} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
         </div>
@@ -1381,9 +1507,8 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
               <span className="text-red-500 font-mono text-sm">{error}</span>
             </div>
           ) : stats ? (
-            <div className="space-y-6">
-              {/* Overview Stats */}
-              <div className="grid grid-cols-3 gap-4">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
                   <div className="text-xs text-zinc-500 font-mono mb-1">总大小</div>
                   <div className="text-2xl font-mono text-zinc-900 dark:text-zinc-100">{formatBytes(stats.totalSize)}</div>
@@ -1398,37 +1523,76 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
                 </div>
               </div>
 
-              {/* Type Distribution */}
               {sortedTypes.length > 0 && (
-                <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                  <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-3">文件类型分布 (前10)</div>
-                  <div className="space-y-2">
-                    {sortedTypes.map(([ext, data]) => {
-                      const percentage = stats.totalSize > 0 ? (data.size / stats.totalSize) * 100 : 0;
-                      return (
-                        <div key={ext} className="space-y-1">
-                          <div className="flex items-center justify-between text-xs font-mono">
-                            <span className="text-zinc-700 dark:text-zinc-300">
-                              .{ext} ({data.count.toLocaleString()} 个文件)
-                            </span>
-                            <span className="text-zinc-500">
-                              {formatBytes(data.size)} ({percentage.toFixed(1)}%)
-                            </span>
-                          </div>
-                          <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-2 overflow-hidden">
-                            <div
-                              className="bg-blue-500 h-full rounded-full transition-all"
-                              style={{ width: `${percentage}%` }}
-                            />
+                <>
+                  <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
+                    <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-xs text-zinc-500 font-mono">容量构成</div>
+                        <div className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">Top {chartItems.length}</div>
+                      </div>
+                      <div className="flex items-center justify-center">
+                        <div
+                          className="relative h-40 w-40 rounded-full shadow-inner"
+                          style={{ background: donutGradient }}
+                          aria-label="文件类型容量环形图"
+                        >
+                          <div className="absolute inset-5 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 flex flex-col items-center justify-center">
+                            <div className="text-[11px] text-zinc-500 font-mono">主类型</div>
+                            <div className="text-xl text-zinc-900 dark:text-zinc-100 font-mono">{dominantType ? `.${dominantType.ext}` : "-"}</div>
+                            <div className="text-xs text-zinc-500 font-mono">{dominantType ? `${dominantType.percentage.toFixed(1)}%` : "0%"}</div>
                           </div>
                         </div>
-                      );
-                    })}
+                      </div>
+                    </div>
+
+                    <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                      <div className="text-xs text-zinc-500 font-mono mb-3">类型占比</div>
+                      <div className="h-4 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700 flex">
+                        {chartItems.map((item) => (
+                          <div
+                            key={item.ext}
+                            title={`.${item.ext} ${item.percentage.toFixed(1)}%`}
+                            style={{ width: `${Math.max(item.percentage, 1)}%`, backgroundColor: item.color }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {chartItems.slice(0, 6).map((item) => (
+                          <div key={item.ext} className="min-w-0 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                              <span className="truncate text-xs text-zinc-700 dark:text-zinc-300 font-mono">.{item.ext}</span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-zinc-500 font-mono">{formatBytes(item.size)} · {item.percentage.toFixed(1)}%</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
+
+                  <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-3">文件类型排行</div>
+                    <div className="space-y-2.5">
+                      {chartItems.map((item) => (
+                        <div key={item.ext} className="grid grid-cols-[minmax(48px,72px)_minmax(0,1fr)_minmax(84px,112px)] items-center gap-2 sm:gap-3 text-xs font-mono">
+                          <div className="truncate text-zinc-700 dark:text-zinc-300">.{item.ext}</div>
+                          <div className="h-3 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{ width: `${Math.max(item.percentage, 1)}%`, backgroundColor: item.color }}
+                            />
+                          </div>
+                          <div className="text-right text-zinc-500">
+                            {formatBytes(item.size)} · {item.count.toLocaleString()}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
               )}
 
-              {/* Empty State */}
               {stats.fileCount === 0 && (
                 <div className="text-center py-8">
                   <span className="text-zinc-400 dark:text-zinc-500 font-mono text-sm">此存储为空</span>
@@ -3182,10 +3346,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     <div className="hidden group-hover:flex items-center gap-1" onClick={e => e.stopPropagation()}>
                       <button
                         onClick={() => { setStatsStorage(s); setShowStats(true); }}
-                        className="text-zinc-400 dark:text-zinc-600 hover:text-blue-500 dark:hover:text-blue-400 text-xs px-1"
+                        className="relative grid h-7 w-7 place-items-center rounded-md border border-zinc-200/70 bg-white/80 text-zinc-500 shadow-sm hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-zinc-700/70 dark:bg-zinc-900/80 dark:text-zinc-500 dark:hover:border-blue-400/40 dark:hover:bg-blue-500/10 dark:hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition cursor-pointer"
                         title="统计"
+                        aria-label="统计"
                       >
-                        📊
+                        <StatsIcon className="h-4 w-4" />
                       </button>
                       <button
                         onClick={() => { setEditingStorage(s); setShowStorageForm(true); }}

@@ -48,3 +48,37 @@ export function stripTrailingSlash(path: string): string {
 export function stripLeadingSlash(path: string): string {
   return path.startsWith("/") ? path.slice(1) : path;
 }
+
+export function getConfigString(
+  config: Record<string, any>,
+  keys: string | string[],
+  fallback: string = ""
+): string {
+  const keyList = Array.isArray(keys) ? keys : [keys];
+  for (const key of keyList) {
+    const value = config[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+  }
+  return fallback;
+}
+
+export function getRefreshToken(config: Record<string, any>, saving: Record<string, any>): string {
+  return getConfigString(config, "refresh_token") || getConfigString(saving, "refresh_token");
+}
+
+export function shouldUseOnlineApi(config: Record<string, any>): boolean {
+  const hasLocalClient =
+    typeof config.client_id === "string" &&
+    config.client_id.trim() &&
+    typeof config.client_secret === "string" &&
+    config.client_secret.trim();
+  if (!hasLocalClient) {
+    return true;
+  }
+  if (config.use_online_api === undefined || config.use_online_api === null) {
+    return true;
+  }
+  return config.use_online_api === true || config.use_online_api === "true" || config.use_online_api === 1;
+}

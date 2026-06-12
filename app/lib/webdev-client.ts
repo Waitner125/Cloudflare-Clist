@@ -30,8 +30,11 @@ export class WebdevClient {
 
   private getFullPath(path: string): string {
     const basePath = this.config.basePath?.replace(/^\/|\/$/g, "") || "";
-    const cleanPath = path.replace(/^\//, "");
-    return basePath ? `${basePath}/${cleanPath}` : cleanPath;
+    const cleanPath = path.replace(/^\/+/, "").replace(/\/{2,}/g, "/");
+    if (basePath && cleanPath) {
+      return `${basePath}/${cleanPath}`;
+    }
+    return basePath || cleanPath;
   }
 
   private getBasicAuth(): string {
@@ -41,6 +44,85 @@ export class WebdevClient {
 
   private normalizeEndpoint(endpoint: string): string {
     return endpoint.replace(/\/$/, "");
+  }
+
+  private encodePath(path: string): string {
+    return path
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+  }
+
+  private buildUrl(path: string, directory: boolean = false): string {
+    const endpoint = this.normalizeEndpoint(this.config.endpoint);
+    const fullPath = this.getFullPath(path);
+    const pathWithSlash =
+      directory && fullPath && !fullPath.endsWith("/") ? `${fullPath}/` : fullPath;
+    const encodedPath = this.encodePath(pathWithSlash);
+
+    if (encodedPath) {
+      return `${endpoint}/${encodedPath}`;
+    }
+    return directory ? `${endpoint}/` : endpoint;
+  }
+
+  private stripPathPrefix(path: string, prefix: string): string {
+    const cleanPrefix = prefix.replace(/^\/+|\/+$/g, "");
+    const cleanPath = path.replace(/^\/+/, "");
+    if (!cleanPrefix) {
+      return cleanPath;
+    }
+
+    const lowerPath = cleanPath.toLowerCase();
+    const lowerPrefix = cleanPrefix.toLowerCase();
+    if (lowerPath === lowerPrefix) {
+      return "";
+    }
+    if (lowerPath.startsWith(`${lowerPrefix}/`)) {
+      return cleanPath.slice(cleanPrefix.length + 1);
+    }
+    return cleanPath;
+  }
+
+  private normalizeKey(path: string, directory: boolean = false): string {
+    const normalized = path
+      .replace(/^\/+/, "")
+      .split("/")
+      .filter(Boolean)
+      .join("/");
+
+    if (directory && normalized) {
+      return `${normalized}/`;
+    }
+    return normalized;
+  }
+
+  private decodeXml(str: string): string {
+    return str
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'");
+  }
+
+  private getPathFromHref(href: string): string {
+    const endpoint = this.normalizeEndpoint(this.config.endpoint);
+    const endpointPath = new URL(endpoint).pathname.replace(/^\/|\/$/g, "");
+    const basePath = this.config.basePath?.replace(/^\/|\/$/g, "") || "";
+
+    let pathname: string;
+    try {
+      pathname = new URL(href, `${endpoint}/`).pathname;
+    } catch {
+      pathname = href.split(/[?#]/, 1)[0];
+    }
+
+    let decodedPath = decodeURIComponent(pathname).replace(/^\/+/, "");
+    decodedPath = this.stripPathPrefix(decodedPath, endpointPath);
+    decodedPath = this.stripPathPrefix(decodedPath, basePath);
+
+    return this.normalizeKey(decodedPath, decodedPath.endsWith("/"));
   }
 
   async listObjects(
@@ -55,8 +137,7 @@ export class WebdevClient {
     }
 
     const fullPrefix = this.getFullPath(normalizedPrefix);
-    const endpoint = this.normalizeEndpoint(this.config.endpoint);
-    const url = fullPrefix ? `${endpoint}/${fullPrefix}` : endpoint;
+    const url = this.buildUrl(normalizedPrefix, true);
 
     const xmlBody = `<?xml version="1.0" encoding="utf-8" ?>
 <D:propfind xmlns:D="DAV:">
@@ -84,181 +165,112 @@ export class WebdevClient {
       }
 
       const xml = await response.text();
-      console.log('[WebDAV] PROPFIND Request:', { url, fullPrefix, normalizedPrefix });
-      console.log('[WebDAV] PROPFIND Response:', xml.substring(0, 1000));
       return this.parsePropfindResponse(xml, fullPrefix, normalizedPrefix);
     } catch (error) {
       throw new Error(`WebDAV listObjects failed: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   }
 
-    private parsePropfindResponse(
-      xml: string,
-      fullPrefix: string,
-      displayPrefix: string
-    ): ListObjectsResult {
-      const objects: S3Object[] = [];
-      const prefixes: string[] = [];
-      const basePath = this.config.basePath?.replace(/^\/|\/$/g, "") || "";
+  private parsePropfindResponse(
+    xml: string,
+    _fullPrefix: string,
+    displayPrefix: string
+  ): ListObjectsResult {
+    const objects: S3Object[] = [];
+    const prefixes: string[] = [];
+    const normalizedDisplayPrefix = this.normalizeKey(displayPrefix, !!displayPrefix);
+    const currentPath = normalizedDisplayPrefix.replace(/\/$/, "");
 
-      // Extract the path from endpoint to remove it from href
-      const endpointPath = new URL(this.config.endpoint).pathname.replace(/^\/|\/$/g, "");
+    // Parse response entries - support any namespace prefix.
+    const responseRegex = /<[^:>]*:?response[^>]*>([\s\S]*?)<\/[^:>]*:?response>/gi;
+    let match;
 
-      const decodeXml = (str: string) => str
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .replace(/&apos;/g, "'");
+    while ((match = responseRegex.exec(xml)) !== null) {
+      const response = match[1];
+      const hrefMatch = response.match(/<[^:>]*:?href[^>]*>(.*?)<\/[^:>]*:?href>/i);
+      if (!hrefMatch) continue;
 
-      // Parse response entries - support any namespace prefix
-      const responseRegex = /<[^:>]*:?response[^>]*>([\s\S]*?)<\/[^:>]*:?response>/gi;
-      let match;
+      const href = this.decodeXml(hrefMatch[1]);
+      const resourceTypeMatch = response.match(/<[^:>]*:?resourcetype[^>]*>([\s\S]*?)<\/[^:>]*:?resourcetype>/i);
+      const isDirectory = !!(
+        resourceTypeMatch && /<[^:>]*:?collection[\s\/>]/i.test(resourceTypeMatch[0])
+      );
 
-      while ((match = responseRegex.exec(xml)) !== null) {
-        const response = match[1];
-
-        // Skip the parent directory entry - support various namespace prefixes
-        // Match href with any namespace prefix
-        const hrefMatch = response.match(/<[^:>]*:?href[^>]*>(.*?)<\/[^:>]*:?href>/i);
-        if (!hrefMatch) continue;
-
-        const href = decodeXml(hrefMatch[1]);
-
-        // Skip if this is the current path itself (check early to avoid processing)
-        // Decode URL-encoded characters and remove leading slash
-        let decodedHref = decodeURIComponent(href).replace(/^\//, "");
-
-        // Remove endpoint path if present (e.g., if endpoint is https://host/dav, remove 'dav')
-        if (endpointPath) {
-          const endpointPathRegex = new RegExp(`^${endpointPath}/?`, 'i');
-          decodedHref = decodedHref.replace(endpointPathRegex, "");
-        }
-
-        // Remove base path if present to match with expectedCurrent
-        if (basePath) {
-          const basePathRegex = new RegExp(`^${basePath}/?`, 'i');
-          decodedHref = decodedHref.replace(basePathRegex, "");
-        }
-
-        const expectedCurrent = fullPrefix.replace(/^\//, "");
-        const shouldSkip = decodedHref === expectedCurrent || decodedHref === expectedCurrent + "/";
-
-        console.log('[WebDAV] Skip check:', {
-          href,
-          decodedHref,
-          expectedCurrent,
-          fullPrefix,
-          basePath,
-          endpointPath,
-          shouldSkip
-        });
-
-        if (shouldSkip) {
-          console.log('[WebDAV] Skipping current directory:', href);
-          continue;
-        }
-
-        // Match resourcetype with any namespace prefix (lp1:, D:, d:, or none)
-        const resourceTypeMatch = response.match(/<[^:>]*:?resourcetype[^>]*>([\s\S]*?)<\/[^:>]*:?resourcetype>/i);
-
-        // Check if resourcetype contains collection tag with any namespace prefix
-        const isDirectory = resourceTypeMatch &&
-          /<[^:>]*:?collection[\s\/>]/i.test(resourceTypeMatch[0]);
-
-        // Get display name, fallback to filename from href if not provided
-        let displayName = "";
-        // Match displayname with any namespace prefix
-        const displayNameMatch = response.match(/<[^:>]*:?displayname[^>]*>(.*?)<\/[^:>]*:?displayname>/i);
-        if (displayNameMatch && displayNameMatch[1]) {
-          displayName = decodeXml(displayNameMatch[1]);
-        }
-
-        // If no displayname provided, extract filename from href
-        if (!displayName) {
-          // Decode URL-encoded characters in href
-          let decodedHref = decodeURIComponent(href);
-          // Remove leading slash
-          decodedHref = decodedHref.replace(/^\//, "");
-          // Remove endpoint path if present
-          if (endpointPath) {
-            const endpointPathRegex = new RegExp(`^${endpointPath}/?`, 'i');
-            decodedHref = decodedHref.replace(endpointPathRegex, "");
-          }
-          // Remove base path if present
-          if (basePath) {
-            const basePathRegex = new RegExp(`^${basePath}/?`, 'i');
-            decodedHref = decodedHref.replace(basePathRegex, "");
-          }
-          // Remove trailing slash for folders before extracting name
-          decodedHref = decodedHref.replace(/\/$/, "");
-          // Extract just the filename/foldername from the path
-          const pathParts = decodedHref.split("/");
-          displayName = pathParts[pathParts.length - 1];
-        }
-
-        // Skip if no display name could be determined
-        if (!displayName) continue;
-
-        const contentLengthMatch = response.match(/<[^:>]*:?getcontentlength[^>]*>(.*?)<\/[^:>]*:?getcontentlength>/i);
-        const size = contentLengthMatch ? parseInt(contentLengthMatch[1], 10) : 0;
-
-        const lastModifiedMatch = response.match(/<[^:>]*:?getlastmodified[^>]*>(.*?)<\/[^:>]*:?getlastmodified>/i);
-        const lastModified = lastModifiedMatch ? decodeXml(lastModifiedMatch[1]) : "";
-
-        console.log('[WebDAV] Item:', {
-          href,
-          displayName,
-          resourceTypeMatch: resourceTypeMatch ? resourceTypeMatch[0] : null,
-          innerContent: resourceTypeMatch ? resourceTypeMatch[1] : null,
-          isDirectory,
-          size
-        });
-
-        // Create a proper key path relative to the display prefix
-        let key = displayName;
-        if (displayPrefix && !isDirectory) {
-          key = displayPrefix + displayName;
-        } else if (displayPrefix && isDirectory) {
-          key = displayPrefix + displayName + "/";
-        }
-  
-        if (isDirectory) {
-          prefixes.push(displayName);
-          objects.push({
-            key,
-            name: displayName,
-            size: 0,
-            lastModified,
-            isDirectory: true,
-          });
-        } else {
-          objects.push({
-            key,
-            name: displayName,
-            size,
-            lastModified,
-            isDirectory: false,
-          });
-        }
+      let key = this.getPathFromHref(href);
+      const keyWithoutSlash = key.replace(/\/$/, "");
+      if (keyWithoutSlash === currentPath) {
+        continue;
       }
-  
-      return {
-        objects: objects.sort((a, b) => {
-          if (a.isDirectory !== b.isDirectory) {
-            return a.isDirectory ? -1 : 1;
-          }
-          return a.name.localeCompare(b.name);
-        }),
-        prefixes,
-        isTruncated: false,
-        nextContinuationToken: undefined,
-      };
+
+      const displayNameMatch = response.match(/<[^:>]*:?displayname[^>]*>(.*?)<\/[^:>]*:?displayname>/i);
+      let displayName = displayNameMatch?.[1] ? this.decodeXml(displayNameMatch[1]) : "";
+
+      if (
+        normalizedDisplayPrefix &&
+        key &&
+        !key.toLowerCase().startsWith(normalizedDisplayPrefix.toLowerCase())
+      ) {
+        key = "";
+      }
+
+      if (!key && displayName) {
+        key = this.normalizeKey(`${normalizedDisplayPrefix}${displayName}`, isDirectory);
+      }
+
+      if (isDirectory) {
+        key = this.normalizeKey(key, true);
+      } else {
+        key = this.normalizeKey(key);
+      }
+
+      if (!displayName) {
+        const pathParts = key.replace(/\/$/, "").split("/");
+        displayName = pathParts[pathParts.length - 1] || "";
+      }
+      if (!displayName || !key) continue;
+
+      const contentLengthMatch = response.match(/<[^:>]*:?getcontentlength[^>]*>(.*?)<\/[^:>]*:?getcontentlength>/i);
+      const size = contentLengthMatch ? parseInt(contentLengthMatch[1], 10) : 0;
+
+      const lastModifiedMatch = response.match(/<[^:>]*:?getlastmodified[^>]*>(.*?)<\/[^:>]*:?getlastmodified>/i);
+      const lastModified = lastModifiedMatch ? this.decodeXml(lastModifiedMatch[1]) : "";
+
+      if (isDirectory) {
+        if (!prefixes.includes(key)) {
+          prefixes.push(key);
+        }
+        objects.push({
+          key,
+          name: displayName,
+          size: 0,
+          lastModified,
+          isDirectory: true,
+        });
+      } else {
+        objects.push({
+          key,
+          name: displayName,
+          size,
+          lastModified,
+          isDirectory: false,
+        });
+      }
     }
+
+    return {
+      objects: objects.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) {
+          return a.isDirectory ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      }),
+      prefixes,
+      isTruncated: false,
+      nextContinuationToken: undefined,
+    };
+  }
   async getObject(key: string): Promise<Response> {
-    const fullKey = this.getFullPath(key);
-    const endpoint = this.normalizeEndpoint(this.config.endpoint);
-    const url = `${endpoint}/${fullKey}`;
+    const url = this.buildUrl(key);
 
     try {
       const response = await fetch(url, {
@@ -279,9 +291,7 @@ export class WebdevClient {
   }
 
   async putObject(key: string, body: ArrayBuffer | string, contentType?: string): Promise<void> {
-    const fullKey = this.getFullPath(key);
-    const endpoint = this.normalizeEndpoint(this.config.endpoint);
-    const url = `${endpoint}/${fullKey}`;
+    const url = this.buildUrl(key);
 
     let bodyData: ArrayBuffer;
     if (typeof body === "string") {
@@ -310,9 +320,7 @@ export class WebdevClient {
   }
 
   async deleteObject(key: string): Promise<void> {
-    const fullKey = this.getFullPath(key);
-    const endpoint = this.normalizeEndpoint(this.config.endpoint);
-    const url = `${endpoint}/${fullKey}`;
+    const url = this.buildUrl(key, key.endsWith("/"));
 
     try {
       const response = await fetch(url, {
@@ -333,9 +341,7 @@ export class WebdevClient {
 
   async createFolder(folderPath: string): Promise<void> {
     const normalizedPath = folderPath.endsWith("/") ? folderPath : folderPath + "/";
-    const fullKey = this.getFullPath(normalizedPath);
-    const endpoint = this.normalizeEndpoint(this.config.endpoint);
-    const url = `${endpoint}/${fullKey}`;
+    const url = this.buildUrl(normalizedPath, true);
 
     try {
       const response = await fetch(url, {
@@ -355,14 +361,11 @@ export class WebdevClient {
   }
 
   async copyObject(sourceKey: string, destKey: string): Promise<void> {
-    const fullSourceKey = this.getFullPath(sourceKey);
-    const fullDestKey = this.getFullPath(destKey);
-    const endpoint = this.normalizeEndpoint(this.config.endpoint);
-    const sourceUrl = `${endpoint}/${fullSourceKey}`;
-    const destUrl = `${endpoint}/${fullDestKey}`;
+    const sourceUrl = this.buildUrl(sourceKey, sourceKey.endsWith("/"));
+    const destUrl = this.buildUrl(destKey, destKey.endsWith("/"));
 
     try {
-      const response = await fetch(destUrl, {
+      const response = await fetch(sourceUrl, {
         method: "COPY",
         headers: {
           Authorization: this.getBasicAuth(),
@@ -383,9 +386,7 @@ export class WebdevClient {
   async headObject(
     key: string
   ): Promise<{ contentLength: number; contentType: string; lastModified: string } | null> {
-    const fullKey = this.getFullPath(key);
-    const endpoint = this.normalizeEndpoint(this.config.endpoint);
-    const url = `${endpoint}/${fullKey}`;
+    const url = this.buildUrl(key);
 
     try {
       const response = await fetch(url, {
@@ -452,11 +453,9 @@ export class WebdevClient {
   async getSignedUrl(key: string, expiresIn: number = 3600): Promise<string> {
     // WebDAV doesn't support signed URLs
     // Return a simple direct URL with basic auth
-    const fullKey = this.getFullPath(key);
-    const endpoint = this.normalizeEndpoint(this.config.endpoint);
     // Note: This is not secure - basic auth in URL is deprecated
     // Prefer using Authorization header instead
-    return `${endpoint}/${fullKey}`;
+    return this.buildUrl(key);
   }
 
   async getSignedUploadPartUrl(

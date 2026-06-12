@@ -16,10 +16,30 @@ interface StorageStats {
   typeDistribution: Record<string, { count: number; size: number }>;
 }
 
+interface ListedObject {
+  name: string;
+  size: number;
+  isDirectory: boolean;
+}
+
+interface ListedObjectsResult {
+  objects: ListedObject[];
+  prefixes: string[];
+  isTruncated: boolean;
+  nextContinuationToken?: string;
+}
+
 type StorageClient = S3Client | WebdevClient | OneDriveClient | GoogleDriveClient | AliyunDriveClient | BaiduYunClient;
 type StatefulClient = {
   getStateUpdates: () => { config?: Record<string, any>; saving?: Record<string, any> } | null;
 };
+
+function isMissingDirectoryError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return /(\b404\b|not found)/i.test(error.message);
+}
 
 async function persistClientState(
   client: StorageClient,
@@ -112,9 +132,9 @@ async function collectStats(
 
       // Handle pagination
       if (result.isTruncated && result.nextContinuationToken) {
-        let continuationToken = result.nextContinuationToken;
+        let continuationToken: string | undefined = result.nextContinuationToken;
         while (continuationToken) {
-          const nextResult = await client.listObjects(
+          const nextResult: ListedObjectsResult = await client.listObjects(
             currentPrefix,
             "/",
             1000,
@@ -146,6 +166,10 @@ async function collectStats(
         }
       }
     } catch (error) {
+      if (currentPrefix && isMissingDirectoryError(error)) {
+        console.warn(`Skipping missing directory while collecting stats: ${currentPrefix}`);
+        continue;
+      }
       console.error(`Error listing objects at ${currentPrefix}:`, error);
       throw error;
     }

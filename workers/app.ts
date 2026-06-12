@@ -20,7 +20,10 @@ async function handleWebdavRequest(
 ): Promise<Response> {
   const build = await getServerBuild();
   const route = build.routes["routes/dav.$storageId.$"];
-  const handler = route?.module?.handleWebdavRequest;
+  const module = route?.module as
+    | { handleWebdavRequest?: (request: Request, params: { storageId: string; "*": string }, context: AppLoadContext) => Promise<Response> }
+    | undefined;
+  const handler = module?.handleWebdavRequest;
   if (typeof handler !== "function") {
     return new Response("WebDAV handler not found", { status: 500 });
   }

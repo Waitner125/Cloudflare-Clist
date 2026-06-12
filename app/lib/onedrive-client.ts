@@ -1,4 +1,13 @@
-import { decodeUploadState, encodeUploadState, joinRootPath, stripLeadingSlash, stripTrailingSlash } from "./drive-utils";
+import {
+  decodeUploadState,
+  encodeUploadState,
+  getConfigString,
+  getRefreshToken,
+  joinRootPath,
+  shouldUseOnlineApi,
+  stripLeadingSlash,
+  stripTrailingSlash,
+} from "./drive-utils";
 
 export interface DriveObject {
   key: string;
@@ -34,6 +43,9 @@ const ONEDRIVE_HOSTS: Record<string, { api: string; oauth: string }> = {
     oauth: "https://login.microsoftonline.de",
   },
 };
+
+const DEFAULT_ONEDRIVE_API_ADDRESS = "https://api.oplist.org/onedrive/renewapi";
+const DEFAULT_ONEDRIVE_REDIRECT_URI = "https://api.oplist.org/onedrive/callback";
 
 interface OneDriveItem {
   id: string;
@@ -104,7 +116,20 @@ export class OneDriveClient {
   }
 
   private async refreshToken(): Promise<void> {
-    if (this.config.use_online_api && this.config.api_address) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.refreshTokenOnce();
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("OneDrive refresh failed");
+  }
+
+  private async refreshTokenOnce(): Promise<void> {
+    if (shouldUseOnlineApi(this.config)) {
       await this.refreshTokenOnline();
       return;
     }
@@ -112,8 +137,14 @@ export class OneDriveClient {
   }
 
   private async refreshTokenOnline(): Promise<void> {
-    const url = new URL(this.config.api_address);
-    url.searchParams.set("refresh_ui", this.config.refresh_token || "");
+    const apiAddress = getConfigString(this.config, ["api_address", "api_url_address"], DEFAULT_ONEDRIVE_API_ADDRESS);
+    const refreshToken = getRefreshToken(this.config, this.saving);
+    if (!refreshToken) {
+      throw new Error("Missing refresh_token");
+    }
+
+    const url = new URL(apiAddress);
+    url.searchParams.set("refresh_ui", refreshToken);
     url.searchParams.set("server_use", "true");
     url.searchParams.set("driver_txt", "onedrive_pr");
 
@@ -143,8 +174,14 @@ export class OneDriveClient {
   }
 
   private async refreshTokenLocal(): Promise<void> {
-    if (!this.config.client_id || !this.config.client_secret) {
+    const clientId = getConfigString(this.config, "client_id");
+    const clientSecret = getConfigString(this.config, "client_secret");
+    const refreshToken = getRefreshToken(this.config, this.saving);
+    if (!clientId || !clientSecret) {
       throw new Error("Missing client_id or client_secret");
+    }
+    if (!refreshToken) {
+      throw new Error("Missing refresh_token");
     }
 
     const host = this.getHost();
@@ -152,10 +189,10 @@ export class OneDriveClient {
 
     const formData = new URLSearchParams();
     formData.append("grant_type", "refresh_token");
-    formData.append("client_id", this.config.client_id);
-    formData.append("client_secret", this.config.client_secret);
-    formData.append("redirect_uri", this.config.redirect_uri || "http://localhost");
-    formData.append("refresh_token", this.config.refresh_token || "");
+    formData.append("client_id", clientId);
+    formData.append("client_secret", clientSecret);
+    formData.append("redirect_uri", getConfigString(this.config, "redirect_uri", DEFAULT_ONEDRIVE_REDIRECT_URI));
+    formData.append("refresh_token", refreshToken);
 
     const response = await fetch(url, {
       method: "POST",
@@ -222,7 +259,8 @@ export class OneDriveClient {
     url: string,
     method: string = "GET",
     body?: any,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    retryAuth: boolean = true
   ): Promise<any> {
     await this.ensureToken();
     const requestHeaders: Record<string, string> = {
@@ -246,9 +284,9 @@ export class OneDriveClient {
 
     const response = await fetch(url, options);
     if (!response.ok) {
-      if (response.status === 401) {
+      if (response.status === 401 && retryAuth) {
         await this.refreshToken();
-        return this.request(url, method, body, headers);
+        return this.request(url, method, body, headers, false);
       }
       const text = await response.text();
       throw new Error(`OneDrive request failed: ${response.status} ${text}`);
@@ -442,14 +480,16 @@ export class OneDriveClient {
 
   async moveObject(path: string, destPath: string): Promise<void> {
     const item = await this.getItemByPath(`/${stripLeadingSlash(path)}`);
-    const normalized = stripLeadingSlash(destPath);
-    const parentPath = normalized ? stripTrailingSlash(normalized) : "";
+    const normalizedDest = stripTrailingSlash(stripLeadingSlash(destPath));
+    const parentPath = normalizedDest.includes("/") ? normalizedDest.slice(0, normalizedDest.lastIndexOf("/")) : "";
+    const newName = normalizedDest.split("/").pop() || item.name;
     const parent = await this.getItemByPath(`/${parentPath}`);
     const url = `${this.getDriveRootUrl()}/items/${item.id}`;
     await this.request(url, "PATCH", {
       parentReference: {
         id: parent.id,
       },
+      name: newName,
     });
   }
 

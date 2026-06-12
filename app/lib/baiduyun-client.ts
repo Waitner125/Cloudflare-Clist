@@ -1,4 +1,11 @@
-import { joinRootPath, stripLeadingSlash, stripTrailingSlash } from "./drive-utils";
+import {
+  getConfigString,
+  getRefreshToken,
+  joinRootPath,
+  shouldUseOnlineApi,
+  stripLeadingSlash,
+  stripTrailingSlash,
+} from "./drive-utils";
 import { md5Hex } from "./md5";
 
 export interface DriveObject {
@@ -20,6 +27,7 @@ export interface ListObjectsResult {
 const BAIDU_API_BASE = "https://pan.baidu.com/rest/2.0";
 const BAIDU_OAUTH_URL = "https://openapi.baidu.com/oauth/2.0/token";
 const BAIDU_PCS_BASE = "https://d.pcs.baidu.com";
+const DEFAULT_BAIDU_API_ADDRESS = "https://api.oplist.org/baiduyun/renewapi";
 
 interface BaiduFile {
   fs_id: number;
@@ -65,14 +73,34 @@ export class BaiduYunClient {
     this.configChanged = true;
   }
 
+  private isTokenExpired(): boolean {
+    if (!this.saving.expires_at) {
+      return false;
+    }
+    return Date.now() >= this.saving.expires_at - 5 * 60 * 1000;
+  }
+
   private async ensureToken(): Promise<void> {
-    if (!this.saving.access_token) {
+    if (!this.saving.access_token || this.isTokenExpired()) {
       await this.refreshToken();
     }
   }
 
   private async refreshToken(): Promise<void> {
-    if (this.config.use_online_api && this.config.api_address) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await this.refreshTokenOnce();
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Baidu refresh failed");
+  }
+
+  private async refreshTokenOnce(): Promise<void> {
+    if (shouldUseOnlineApi(this.config)) {
       await this.refreshTokenOnline();
       return;
     }
@@ -80,8 +108,13 @@ export class BaiduYunClient {
   }
 
   private async refreshTokenOnline(): Promise<void> {
-    const url = new URL(this.config.api_address);
-    url.searchParams.set("refresh_ui", this.config.refresh_token || "");
+    const refreshToken = getRefreshToken(this.config, this.saving);
+    if (!refreshToken) {
+      throw new Error("Missing refresh_token");
+    }
+
+    const url = new URL(getConfigString(this.config, ["api_address", "api_url_address"], DEFAULT_BAIDU_API_ADDRESS));
+    url.searchParams.set("refresh_ui", refreshToken);
     url.searchParams.set("server_use", "true");
     url.searchParams.set("driver_txt", "baiduyun_go");
 
@@ -91,31 +124,38 @@ export class BaiduYunClient {
       throw new Error(`Baidu online refresh failed: ${response.status} ${text}`);
     }
 
-    const data = await response.json() as { access_token?: string; refresh_token?: string; text?: string };
+    const data = await response.json() as { access_token?: string; refresh_token?: string; expires_in?: number; text?: string };
     if (!data.access_token || !data.refresh_token) {
       throw new Error(data.text || "Baidu online refresh returned empty token");
     }
 
     this.saving.access_token = data.access_token;
     this.saving.refresh_token = data.refresh_token;
+    this.saving.expires_at = data.expires_in ? Date.now() + data.expires_in * 1000 : undefined;
     this.config.refresh_token = data.refresh_token;
     this.markSavingChanged();
     this.markConfigChanged();
   }
 
   private async refreshTokenLocal(): Promise<void> {
-    if (!this.config.client_id || !this.config.client_secret) {
+    const clientId = getConfigString(this.config, "client_id");
+    const clientSecret = getConfigString(this.config, "client_secret");
+    const refreshToken = getRefreshToken(this.config, this.saving);
+    if (!clientId || !clientSecret) {
       throw new Error("Missing client_id or client_secret");
+    }
+    if (!refreshToken) {
+      throw new Error("Missing refresh_token");
     }
 
     const url = new URL(BAIDU_OAUTH_URL);
     url.searchParams.set("grant_type", "refresh_token");
-    url.searchParams.set("refresh_token", this.config.refresh_token || "");
-    url.searchParams.set("client_id", this.config.client_id);
-    url.searchParams.set("client_secret", this.config.client_secret);
+    url.searchParams.set("refresh_token", refreshToken);
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("client_secret", clientSecret);
 
     const response = await fetch(url.toString(), { method: "GET" });
-    const data = await response.json() as { access_token?: string; refresh_token?: string; error?: string; error_description?: string };
+    const data = await response.json() as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string };
     if (!response.ok || data.error) {
       throw new Error(data.error_description || data.error || "Baidu refresh failed");
     }
@@ -125,6 +165,7 @@ export class BaiduYunClient {
 
     this.saving.access_token = data.access_token;
     this.saving.refresh_token = data.refresh_token;
+    this.saving.expires_at = data.expires_in ? Date.now() + data.expires_in * 1000 : undefined;
     this.config.refresh_token = data.refresh_token;
     this.markSavingChanged();
     this.markConfigChanged();
@@ -143,11 +184,12 @@ export class BaiduYunClient {
     pathname: string,
     method: string = "GET",
     params?: Record<string, string>,
-    body?: any
+    body?: any,
+    retryAuth: boolean = true
   ): Promise<any> {
     await this.ensureToken();
-    const cleanPath = pathname.startsWith("/") ? pathname.slice(1) : pathname;
-    const url = new URL(cleanPath, BAIDU_API_BASE);
+    const cleanPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+    const url = new URL(`${BAIDU_API_BASE}${cleanPath}`);
     url.searchParams.set("access_token", this.saving.access_token || "");
     if (params) {
       for (const [key, value] of Object.entries(params)) {
@@ -187,9 +229,9 @@ export class BaiduYunClient {
     }
 
     if (data.errno !== undefined && data.errno !== 0) {
-      if (data.errno === 111 || data.errno === -6) {
+      if ((data.errno === 111 || data.errno === -6) && retryAuth) {
         await this.refreshToken();
-        return this.request(pathname, method, params, body);
+        return this.request(pathname, method, params, body, false);
       }
       throw new Error(`Baidu API errno=${data.errno}`);
     }
@@ -369,7 +411,7 @@ export class BaiduYunClient {
         method: "POST",
         body: formData,
       });
-      const result = await response.json();
+      const result = await response.json() as { errno?: number; error_code?: number };
       if (result.errno !== 0 && result.error_code !== 0) {
         throw new Error(`Baidu upload slice failed: ${JSON.stringify(result)}`);
       }
@@ -407,9 +449,11 @@ export class BaiduYunClient {
   async copyObject(sourceKey: string, destKey: string): Promise<void> {
     const source = this.resolvePath(sourceKey);
     const dest = this.resolvePath(destKey);
+    const destDir = dest.substring(0, dest.lastIndexOf("/")) || "/";
+    const newName = dest.split("/").pop() || "";
     await this.request("/xpan/file", "POST", { method: "filemanager", opera: "copy" }, {
       async: "0",
-      filelist: JSON.stringify([{ path: source, dest, newname: dest.split("/").pop() || "" }]),
+      filelist: JSON.stringify([{ path: source, dest: destDir, newname: newName }]),
       ondup: "fail",
     });
   }
@@ -426,8 +470,9 @@ export class BaiduYunClient {
 
   async moveObject(path: string, destPath: string): Promise<void> {
     const sourcePath = this.resolvePath(path);
-    const destDir = this.resolvePath(destPath);
-    const fileName = sourcePath.split("/").pop() || "";
+    const dest = this.resolvePath(destPath);
+    const destDir = dest.substring(0, dest.lastIndexOf("/")) || "/";
+    const fileName = dest.split("/").pop() || sourcePath.split("/").pop() || "";
     await this.request("/xpan/file", "POST", { method: "filemanager", opera: "move" }, {
       async: "0",
       filelist: JSON.stringify([{ path: sourcePath, dest: destDir, newname: fileName }]),

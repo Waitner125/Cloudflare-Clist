@@ -1,4 +1,12 @@
-import { decodeUploadState, encodeUploadState, stripLeadingSlash, stripTrailingSlash } from "./drive-utils";
+import {
+  decodeUploadState,
+  encodeUploadState,
+  getConfigString,
+  getRefreshToken,
+  shouldUseOnlineApi,
+  stripLeadingSlash,
+  stripTrailingSlash,
+} from "./drive-utils";
 
 export interface DriveObject {
   key: string;
@@ -28,6 +36,8 @@ interface GoogleListResponse {
   files: GoogleFile[];
   nextPageToken?: string;
 }
+
+const DEFAULT_GOOGLE_API_ADDRESS = "https://api.oplist.org/googleui/renewapi";
 
 export class GoogleDriveClient {
   private config: Record<string, any>;
@@ -75,17 +85,64 @@ export class GoogleDriveClient {
   }
 
   private async refreshToken(): Promise<void> {
-    if (!this.config.client_id || !this.config.client_secret) {
+    if (shouldUseOnlineApi(this.config)) {
+      await this.refreshTokenOnline();
+      return;
+    }
+    await this.refreshTokenLocal();
+  }
+
+  private async refreshTokenOnline(): Promise<void> {
+    const refreshToken = getRefreshToken(this.config, this.saving);
+    if (!refreshToken) {
+      throw new Error("Missing refresh_token");
+    }
+
+    const url = new URL(getConfigString(this.config, ["api_address", "api_url_address"], DEFAULT_GOOGLE_API_ADDRESS));
+    url.searchParams.set("refresh_ui", refreshToken);
+    url.searchParams.set("server_use", "true");
+    url.searchParams.set("driver_txt", "googleui_go");
+
+    const response = await fetch(url.toString(), { method: "GET" });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Google online refresh failed: ${response.status} ${text}`);
+    }
+
+    const data = await response.json() as {
+      access_token?: string;
+      expires_in?: number;
+      refresh_token?: string;
+      text?: string;
+    };
+
+    if (!data.access_token || !data.refresh_token) {
+      throw new Error(data.text || "Google online refresh returned empty token");
+    }
+
+    this.saving.access_token = data.access_token;
+    this.saving.refresh_token = data.refresh_token;
+    this.config.refresh_token = data.refresh_token;
+    this.saving.expires_at = Date.now() + (data.expires_in ? data.expires_in * 1000 : 3600 * 1000);
+    this.markSavingChanged();
+    this.markConfigChanged();
+  }
+
+  private async refreshTokenLocal(): Promise<void> {
+    const clientId = getConfigString(this.config, "client_id");
+    const clientSecret = getConfigString(this.config, "client_secret");
+    const refreshToken = getRefreshToken(this.config, this.saving);
+    if (!clientId || !clientSecret) {
       throw new Error("Missing client_id or client_secret");
     }
-    if (!this.config.refresh_token) {
+    if (!refreshToken) {
       throw new Error("Missing refresh_token");
     }
 
     const formData = new URLSearchParams();
-    formData.append("client_id", this.config.client_id);
-    formData.append("client_secret", this.config.client_secret);
-    formData.append("refresh_token", this.config.refresh_token);
+    formData.append("client_id", clientId);
+    formData.append("client_secret", clientSecret);
+    formData.append("refresh_token", refreshToken);
     formData.append("grant_type", "refresh_token");
 
     const response = await fetch("https://oauth2.googleapis.com/token", {
@@ -126,7 +183,8 @@ export class GoogleDriveClient {
     url: string,
     method: string = "GET",
     body?: any,
-    headers?: Record<string, string>
+    headers?: Record<string, string>,
+    retryAuth: boolean = true
   ): Promise<Response> {
     await this.ensureToken();
     const requestHeaders: Record<string, string> = {
@@ -148,9 +206,9 @@ export class GoogleDriveClient {
     }
 
     const response = await fetch(url, options);
-    if (response.status === 401) {
+    if (response.status === 401 && retryAuth) {
       await this.refreshToken();
-      return this.request(url, method, body, headers);
+      return this.request(url, method, body, headers, false);
     }
     return response;
   }
@@ -211,6 +269,9 @@ export class GoogleDriveClient {
     url.searchParams.set("q", `'${folderId}' in parents and trashed = false`);
     url.searchParams.set("fields", "files(id,name,mimeType,size,modifiedTime),nextPageToken");
     url.searchParams.set("pageSize", String(maxKeys));
+    const orderBy = getConfigString(this.config, "order_by", "folder,name,modifiedTime");
+    const orderDirection = getConfigString(this.config, "order_direction", "desc");
+    url.searchParams.set("orderBy", `${orderBy} ${orderDirection}`);
     url.searchParams.set("supportsAllDrives", "true");
     url.searchParams.set("includeItemsFromAllDrives", "true");
     if (continuationToken) {
@@ -405,7 +466,10 @@ export class GoogleDriveClient {
     if (!fileId) {
       throw new Error("Google Drive file not found");
     }
-    const parentId = await this.findFileIdByPath(stripLeadingSlash(destPath));
+    const normalizedDest = stripTrailingSlash(stripLeadingSlash(destPath));
+    const parentPath = normalizedDest.includes("/") ? normalizedDest.slice(0, normalizedDest.lastIndexOf("/")) : "";
+    const fileName = normalizedDest.split("/").pop() || stripLeadingSlash(path).split("/").pop() || "";
+    const parentId = await this.findFileIdByPath(parentPath);
     if (!parentId) {
       throw new Error("Google Drive destination not found");
     }
@@ -419,7 +483,7 @@ export class GoogleDriveClient {
     url.searchParams.set("addParents", parentId);
     url.searchParams.set("removeParents", previousParents);
     url.searchParams.set("supportsAllDrives", "true");
-    await this.requestJson(url.toString(), "PATCH", {});
+    await this.requestJson(url.toString(), "PATCH", { name: fileName });
   }
 
   async initiateMultipartUpload(

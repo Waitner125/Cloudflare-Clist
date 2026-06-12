@@ -326,12 +326,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (!body.uploadId || !body.partNumbers || body.partNumbers.length === 0) {
         return Response.json({ error: "uploadId and partNumbers are required" }, { status: 400 });
       }
+      const uploadId = body.uploadId;
+      const partNumbers = body.partNumbers;
 
       const urls = await withClientState(client, db, storageId, async () => {
         const result: Record<number, string> = {};
-        for (const partNumber of body.partNumbers) {
+        for (const partNumber of partNumbers) {
           try {
-            result[partNumber] = await client.getSignedUploadPartUrl(path, body.uploadId, partNumber);
+            result[partNumber] = await client.getSignedUploadPartUrl(path, uploadId, partNumber);
           } catch {
             // ignore and fallback to proxy upload
           }
@@ -389,12 +391,14 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (!body.uploadId || !body.parts || body.parts.length === 0) {
         return Response.json({ error: "uploadId and parts are required" }, { status: 400 });
       }
+      const uploadId = body.uploadId;
+      const parts = body.parts;
 
       await withClientState(
         client,
         db,
         storageId,
-        () => client.completeMultipartUpload(path, body.uploadId, body.parts)
+        () => client.completeMultipartUpload(path, uploadId, parts)
       );
       await logAudit(db, {
         action: "file.multipart_complete",
@@ -403,7 +407,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         userAgent: meta.userAgent,
         storageId,
         path,
-        detail: { uploadId: body.uploadId, parts: body.parts.length },
+        detail: { uploadId, parts: parts.length },
       });
       return Response.json({ success: true, path });
     } catch (error) {
@@ -422,12 +426,13 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       if (!body.uploadId) {
         return Response.json({ error: "uploadId is required" }, { status: 400 });
       }
+      const uploadId = body.uploadId;
 
       await withClientState(
         client,
         db,
         storageId,
-        () => client.abortMultipartUpload(path, body.uploadId)
+        () => client.abortMultipartUpload(path, uploadId)
       );
       await logAudit(db, {
         action: "file.multipart_abort",
@@ -436,7 +441,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         userAgent: meta.userAgent,
         storageId,
         path,
-        detail: { uploadId: body.uploadId },
+        detail: { uploadId },
       });
       return Response.json({ success: true });
     } catch (error) {
@@ -635,7 +640,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
           client,
           db,
           storageId,
-          () => (client as { moveObject: (path: string, destPath: string) => Promise<void> }).moveObject(path, targetDir || "")
+          () => (client as { moveObject: (path: string, destPath: string) => Promise<void> }).moveObject(path, newPath)
         );
         await logAudit(db, {
           action: "file.move",

@@ -1,4 +1,12 @@
-import { decodeUploadState, encodeUploadState, stripLeadingSlash, stripTrailingSlash } from "./drive-utils";
+import {
+  decodeUploadState,
+  encodeUploadState,
+  getConfigString,
+  getRefreshToken,
+  shouldUseOnlineApi,
+  stripLeadingSlash,
+  stripTrailingSlash,
+} from "./drive-utils";
 
 export interface DriveObject {
   key: string;
@@ -17,6 +25,7 @@ export interface ListObjectsResult {
 }
 
 const API_URL = "https://openapi.alipan.com";
+const DEFAULT_ALICLOUD_API_ADDRESS = "https://api.oplist.org/alicloud/renewapi";
 
 const API_ENDPOINTS = {
   GET_DRIVE_INFO: "/adrive/v1.0/user/getDriveInfo",
@@ -57,6 +66,7 @@ interface AliyunCreateResponse {
 interface AliyunDownloadResponse {
   url?: string;
   streams_url?: Record<string, string>;
+  streamsUrl?: Record<string, string>;
 }
 
 export class AliyunDriveClient {
@@ -95,17 +105,34 @@ export class AliyunDriveClient {
     return Date.now() >= this.saving.expires_at - 5 * 60 * 1000;
   }
 
-  private async ensureToken(): Promise<void> {
+  private async ensureAccessToken(): Promise<void> {
     if (!this.saving.access_token || this.isTokenExpired()) {
       await this.refreshToken();
     }
+  }
+
+  private async ensureToken(): Promise<void> {
+    await this.ensureAccessToken();
     if (!this.saving.drive_id) {
       await this.loadDriveInfo();
     }
   }
 
   private async refreshToken(): Promise<void> {
-    if (this.config.use_online_api && this.config.api_address) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await this.refreshTokenOnce();
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Aliyun refresh failed");
+  }
+
+  private async refreshTokenOnce(): Promise<void> {
+    if (shouldUseOnlineApi(this.config)) {
       await this.refreshTokenOnline();
       return;
     }
@@ -113,8 +140,13 @@ export class AliyunDriveClient {
   }
 
   private async refreshTokenOnline(): Promise<void> {
-    const url = new URL(this.config.api_address);
-    url.searchParams.set("refresh_ui", this.config.refresh_token || "");
+    const refreshToken = getRefreshToken(this.config, this.saving);
+    if (!refreshToken) {
+      throw new Error("Missing refresh_token");
+    }
+
+    const url = new URL(getConfigString(this.config, ["api_address", "api_url_address"], DEFAULT_ALICLOUD_API_ADDRESS));
+    url.searchParams.set("refresh_ui", refreshToken);
     url.searchParams.set("server_use", "true");
     const driverTxt = this.config.alipan_type === "alipanTV" ? "alicloud_tv" : "alicloud_qr";
     url.searchParams.set("driver_txt", driverTxt);
@@ -138,19 +170,26 @@ export class AliyunDriveClient {
   }
 
   private async refreshTokenLocal(): Promise<void> {
-    if (!this.config.client_id || !this.config.client_secret) {
+    const clientId = getConfigString(this.config, "client_id");
+    const clientSecret = getConfigString(this.config, "client_secret");
+    const refreshToken = getRefreshToken(this.config, this.saving);
+    if (!clientId || !clientSecret) {
       throw new Error("Missing client_id or client_secret");
     }
+    if (!refreshToken) {
+      throw new Error("Missing refresh_token");
+    }
+
     const response = await fetch(`${API_URL}${API_ENDPOINTS.OAUTH_TOKEN}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        client_id: this.config.client_id,
-        client_secret: this.config.client_secret,
+        client_id: clientId,
+        client_secret: clientSecret,
         grant_type: "refresh_token",
-        refresh_token: this.config.refresh_token || "",
+        refresh_token: refreshToken,
       }),
     });
     const data = await response.json() as { access_token?: string; refresh_token?: string; expires_in?: number; message?: string; code?: string };
@@ -169,7 +208,8 @@ export class AliyunDriveClient {
   }
 
   private async loadDriveInfo(): Promise<void> {
-    const data = await this.requestJson(API_ENDPOINTS.GET_DRIVE_INFO, "POST", {});
+    await this.ensureAccessToken();
+    const data = await this.requestJsonRaw(API_ENDPOINTS.GET_DRIVE_INFO, "POST", {});
     const driveType = this.config.drive_type || "resource";
     const driveIdKey = `${driveType}_drive_id`;
     const driveId = data[driveIdKey];
@@ -184,9 +224,19 @@ export class AliyunDriveClient {
   private async request(
     endpoint: string,
     method: string = "POST",
-    body?: any
+    body?: any,
+    retryAuth: boolean = true
   ): Promise<Response> {
     await this.ensureToken();
+    return this.requestRaw(endpoint, method, body, retryAuth);
+  }
+
+  private async requestRaw(
+    endpoint: string,
+    method: string = "POST",
+    body?: any,
+    retryAuth: boolean = true
+  ): Promise<Response> {
     const url = `${API_URL}${endpoint}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.saving.access_token}`,
@@ -201,11 +251,47 @@ export class AliyunDriveClient {
     if (body && method === "POST") {
       options.body = JSON.stringify(body);
     }
-    return fetch(url, options);
+    const response = await fetch(url, options);
+    if (response.status === 401 && retryAuth) {
+      await this.refreshToken();
+      return this.requestRaw(endpoint, method, body, false);
+    }
+    return response;
   }
 
-  private async requestJson(endpoint: string, method: string = "POST", body?: any): Promise<any> {
+  private async requestJson(
+    endpoint: string,
+    method: string = "POST",
+    body?: any,
+    retryAuth: boolean = true
+  ): Promise<any> {
     const response = await this.request(endpoint, method, body);
+    const data = await this.parseJsonResponse(response);
+    if (this.isAuthErrorCode(data.code) && retryAuth) {
+      await this.refreshToken();
+      return this.requestJson(endpoint, method, body, false);
+    }
+    this.assertApiSuccess(response, data);
+    return data;
+  }
+
+  private async requestJsonRaw(
+    endpoint: string,
+    method: string = "POST",
+    body?: any,
+    retryAuth: boolean = true
+  ): Promise<any> {
+    const response = await this.requestRaw(endpoint, method, body);
+    const data = await this.parseJsonResponse(response);
+    if (this.isAuthErrorCode(data.code) && retryAuth) {
+      await this.refreshToken();
+      return this.requestJsonRaw(endpoint, method, body, false);
+    }
+    this.assertApiSuccess(response, data);
+    return data;
+  }
+
+  private async parseJsonResponse(response: Response): Promise<any> {
     const text = await response.text();
     let data: any;
     try {
@@ -213,10 +299,17 @@ export class AliyunDriveClient {
     } catch {
       throw new Error(`Aliyun API parse failed: ${text.substring(0, 200)}`);
     }
+    return data;
+  }
+
+  private isAuthErrorCode(code: unknown): boolean {
+    return code === "AccessTokenInvalid" || code === "AccessTokenExpired" || code === "I400JD";
+  }
+
+  private assertApiSuccess(response: Response, data: any): void {
     if (!response.ok || data.code) {
       throw new Error(data.message || "Aliyun API error");
     }
-    return data;
   }
 
   private getRootId(): string {
@@ -326,7 +419,8 @@ export class AliyunDriveClient {
       file_id: fileId,
       expire_sec: 14400,
     }) as AliyunDownloadResponse;
-    const url = response.url || response.streams_url?.[this.config.livp_download_format || "jpeg"];
+    const streams = response.streamsUrl || response.streams_url;
+    const url = response.url || streams?.[this.config.livp_download_format || "jpeg"];
     if (!url) {
       throw new Error("Aliyun download URL missing");
     }
@@ -343,7 +437,8 @@ export class AliyunDriveClient {
       file_id: fileId,
       expire_sec: 14400,
     }) as AliyunDownloadResponse;
-    const url = response.url || response.streams_url?.[this.config.livp_download_format || "jpeg"];
+    const streams = response.streamsUrl || response.streams_url;
+    const url = response.url || streams?.[this.config.livp_download_format || "jpeg"];
     if (!url) {
       throw new Error("Aliyun download URL missing");
     }
@@ -481,7 +576,11 @@ export class AliyunDriveClient {
     if (!fileId) {
       throw new Error("Aliyun file not found");
     }
-    const parentId = await this.findFileIdByPath(stripLeadingSlash(destPath));
+    const normalizedDest = stripTrailingSlash(stripLeadingSlash(destPath));
+    const parentPath = normalizedDest.includes("/") ? normalizedDest.slice(0, normalizedDest.lastIndexOf("/")) : "";
+    const oldName = stripLeadingSlash(path).split("/").pop() || "";
+    const fileName = normalizedDest.split("/").pop() || oldName;
+    const parentId = await this.findFileIdByPath(parentPath);
     if (!parentId) {
       throw new Error("Aliyun destination not found");
     }
@@ -491,6 +590,10 @@ export class AliyunDriveClient {
       to_parent_file_id: parentId,
       check_name_mode: "rename",
     });
+    if (fileName && fileName !== oldName) {
+      const movedPath = parentPath ? `${parentPath}/${oldName}` : oldName;
+      await this.renameObject(movedPath, fileName);
+    }
   }
 
   async initiateMultipartUpload(
