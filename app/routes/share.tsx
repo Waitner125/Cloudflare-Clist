@@ -12,6 +12,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 import { useState, useEffect } from "react";
+import { FilePreview } from "~/components/FilePreview";
+import { getFileType } from "~/lib/file-utils";
 
 interface S3Object {
   key: string;
@@ -88,6 +90,7 @@ export default function Share({ loaderData }: Route.ComponentProps) {
   const [storage, setStorage] = useState<StorageInfo | null>(null);
   const [path, setPath] = useState("");
   const [objects, setObjects] = useState<S3Object[]>([]);
+  const [previewFile, setPreviewFile] = useState<S3Object | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -181,6 +184,8 @@ export default function Share({ loaderData }: Route.ComponentProps) {
     );
   };
 
+  const canPreviewImage = (obj: S3Object) => !obj.isDirectory && getFileType(obj.name) === "image";
+
   if (error && !share) {
     return (
       <div className="flex items-center justify-center h-screen bg-white dark:bg-zinc-950">
@@ -272,7 +277,7 @@ export default function Share({ loaderData }: Route.ComponentProps) {
                 <th className="text-left py-2 px-4 font-normal">名称</th>
                 <th className="text-right py-2 px-4 font-normal w-24">大小</th>
                 <th className="text-right py-2 px-4 font-normal w-44">修改时间</th>
-                <th className="text-right py-2 px-4 font-normal w-16">操作</th>
+                <th className="text-right py-2 px-4 font-normal w-24">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -305,13 +310,24 @@ export default function Share({ loaderData }: Route.ComponentProps) {
                   </td>
                   <td className="py-2 px-4 text-right">
                     {!obj.isDirectory && (
-                      <button
-                        onClick={() => downloadFile(obj.key)}
-                        className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
-                        title="下载"
-                      >
-                        ↓
-                      </button>
+                      <div className="flex items-center justify-end gap-3">
+                        {canPreviewImage(obj) && (
+                          <button
+                            onClick={() => setPreviewFile(obj)}
+                            className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
+                            title="预览"
+                          >
+                            👁
+                          </button>
+                        )}
+                        <button
+                          onClick={() => downloadFile(obj.key)}
+                          className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
+                          title="下载"
+                        >
+                          ↓
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -325,6 +341,16 @@ export default function Share({ loaderData }: Route.ComponentProps) {
       <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 shrink-0 text-xs text-zinc-500 font-mono">
         <div>CList 分享内容</div>
       </div>
+
+      {previewFile && token && (
+        <FilePreview
+          storageId={storage.id}
+          fileKey={previewFile.key}
+          fileName={previewFile.name}
+          shareToken={token}
+          onClose={() => setPreviewFile(null)}
+        />
+      )}
     </div>
   );
 }

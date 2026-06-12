@@ -7,6 +7,7 @@ interface FilePreviewProps {
   storageId: number;
   fileKey: string;
   fileName: string;
+  shareToken?: string;
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
@@ -18,6 +19,7 @@ export function FilePreview({
   storageId,
   fileKey,
   fileName,
+  shareToken,
   onClose,
   onPrev,
   onNext,
@@ -25,7 +27,20 @@ export function FilePreview({
   hasNext,
 }: FilePreviewProps) {
   const fileType = getFileType(fileName);
-  const fileUrl = `/api/files/${storageId}/${fileKey}?action=download`;
+  const inlineFileUrl = `/api/files/${storageId}/${fileKey}`;
+  const tokenParam = shareToken ? `token=${encodeURIComponent(shareToken)}` : "";
+  const inlineFileUrlWithToken = tokenParam ? `${inlineFileUrl}?${tokenParam}` : inlineFileUrl;
+  const downloadFileUrl = `${inlineFileUrl}?action=download${tokenParam ? `&${tokenParam}` : ""}`;
+  const previewFileUrlWithToken = fileType === "image" ? inlineFileUrlWithToken : downloadFileUrl;
+
+  const getAbsoluteUrl = (url: string) => new URL(url, window.location.origin).href;
+  const copyImageLink = () => {
+    navigator.clipboard.writeText(getAbsoluteUrl(inlineFileUrlWithToken)).then(() => {
+      alert("图片链接已复制");
+    }).catch(() => {
+      alert("复制失败，请手动复制");
+    });
+  };
 
   // Keyboard navigation
   useEffect(() => {
@@ -57,8 +72,30 @@ export function FilePreview({
           <span className="text-white font-mono text-sm truncate">{fileName}</span>
         </div>
         <div className="flex items-center gap-2">
+          {fileType === "image" && (
+            <>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  copyImageLink();
+                }}
+                className="text-zinc-400 hover:text-white text-sm font-mono px-3 py-1 border border-zinc-700 hover:border-zinc-500 rounded transition"
+              >
+                复制链接
+              </button>
+              <a
+                href={inlineFileUrlWithToken}
+                target="_blank"
+                rel="noreferrer"
+                className="text-zinc-400 hover:text-white text-sm font-mono px-3 py-1 border border-zinc-700 hover:border-zinc-500 rounded transition"
+                onClick={(e) => e.stopPropagation()}
+              >
+                打开原图
+              </a>
+            </>
+          )}
           <a
-            href={fileUrl}
+            href={downloadFileUrl}
             download={fileName}
             className="text-zinc-400 hover:text-white text-sm font-mono px-3 py-1 border border-zinc-700 hover:border-zinc-500 rounded transition"
             onClick={(e) => e.stopPropagation()}
@@ -99,24 +136,24 @@ export function FilePreview({
 
         {/* Preview content */}
         <div className="w-full h-full flex items-center justify-center p-4">
-          {fileType === "video" && <VideoPlayer url={fileUrl} />}
-          {fileType === "audio" && <AudioPlayer url={fileUrl} fileName={fileName} />}
-          {fileType === "image" && <ImageViewer url={fileUrl} fileName={fileName} />}
+          {fileType === "video" && <VideoPlayer url={previewFileUrlWithToken} />}
+          {fileType === "audio" && <AudioPlayer url={previewFileUrlWithToken} fileName={fileName} />}
+          {fileType === "image" && <ImageViewer url={previewFileUrlWithToken} fileName={fileName} />}
           {fileType === "text" && (
-            <TextViewer url={fileUrl} fileName={fileName} />
+            <TextViewer url={previewFileUrlWithToken} fileName={fileName} />
           )}
           {fileType === "code" && (
-            <CodeViewer url={fileUrl} fileName={fileName} />
+            <CodeViewer url={previewFileUrlWithToken} fileName={fileName} />
           )}
           {fileType === "markdown" && (
-            <MarkdownViewer url={fileUrl} fileName={fileName} />
+            <MarkdownViewer url={previewFileUrlWithToken} fileName={fileName} />
           )}
-          {fileType === "pdf" && <PDFViewer url={fileUrl} />}
+          {fileType === "pdf" && <PDFViewer url={previewFileUrlWithToken} />}
           {fileType === "unknown" && (
             <div className="text-zinc-400 font-mono text-center">
               <p className="text-lg mb-2">无法预览此文件类型</p>
               <a
-                href={fileUrl}
+                href={downloadFileUrl}
                 download={fileName}
                 className="text-blue-400 hover:text-blue-300 underline"
               >

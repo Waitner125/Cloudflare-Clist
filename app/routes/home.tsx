@@ -1798,6 +1798,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [shareTarget, setShareTarget] = useState<S3Object | null>(null);
   const [shareToken, setShareToken] = useState("");
   const [shareUrl, setShareUrl] = useState("");
+  const [customShareToken, setCustomShareToken] = useState("");
   const [shareExpireHours, setShareExpireHours] = useState(0);
   const [creatingShare, setCreatingShare] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1971,6 +1972,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     setShareTarget(obj);
     setShareToken("");
     setShareUrl("");
+    setCustomShareToken("");
     setShareExpireHours(0);
   };
 
@@ -1994,6 +1996,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           filePath: shareTarget.key,
           isDirectory: shareTarget.isDirectory,
           expiresAt,
+          shareToken: customShareToken.trim() || undefined,
         }),
       });
 
@@ -2995,6 +2998,19 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
 
               {!shareUrl ? (
                 <>
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1 font-mono">自定义分享令牌（可选）</label>
+                    <input
+                      type="text"
+                      value={customShareToken}
+                      onChange={(e) => setCustomShareToken(e.target.value)}
+                      placeholder="留空则自动生成"
+                      className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                    />
+                    <div className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">
+                      仅支持字母、数字、下划线和短横线，且不能重复
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-xs text-zinc-500 mb-1 font-mono">过期时间</label>
                     <select

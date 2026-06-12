@@ -94,9 +94,10 @@ export async function action({ request, context }: Route.ActionArgs) {
         filePath: string;
         isDirectory: boolean;
         expiresAt?: string;
+        shareToken?: string;
       };
 
-      const { storageId, filePath, isDirectory, expiresAt } = body;
+      const { storageId, filePath, isDirectory, expiresAt, shareToken } = body;
 
       if (!storageId || !filePath || isDirectory === undefined) {
         return Response.json(
@@ -110,7 +111,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         return Response.json({ error: "存储不存在" }, { status: 404 });
       }
 
-      const share = await createShare(db, storageId, filePath, isDirectory, expiresAt);
+      const share = await createShare(db, storageId, filePath, isDirectory, expiresAt, shareToken);
 
       // Generate share URL
       const baseUrl = new URL(request.url).origin;
@@ -123,7 +124,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         userAgent: meta.userAgent,
         storageId,
         path: filePath,
-        detail: { isDirectory, expiresAt: expiresAt || null },
+        detail: { isDirectory, expiresAt: expiresAt || null, customShareToken: Boolean(shareToken?.trim()) },
       });
 
       return Response.json({
@@ -132,9 +133,11 @@ export async function action({ request, context }: Route.ActionArgs) {
         shareUrl,
       });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "创建分享链接失败";
+      const status = message.includes("已存在") ? 409 : message.includes("分享令牌只能") ? 400 : 500;
       return Response.json(
-        { error: error instanceof Error ? error.message : "创建分享链接失败" },
-        { status: 500 }
+        { error: message },
+        { status }
       );
     }
   }

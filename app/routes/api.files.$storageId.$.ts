@@ -9,6 +9,7 @@ import { GoogleDriveClient } from "~/lib/gdrive-client";
 import { AliyunDriveClient } from "~/lib/alicloud-client";
 import { BaiduYunClient } from "~/lib/baiduyun-client";
 import { getRequestMeta, logAudit } from "~/lib/audit";
+import { getFileType, getMimeType } from "~/lib/file-utils";
 
 type StorageClient = S3Client | WebdevClient | OneDriveClient | GoogleDriveClient | AliyunDriveClient | BaiduYunClient;
 type StatefulClient = {
@@ -115,6 +116,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const url = new URL(request.url);
   const action = url.searchParams.get("action");
   const shareToken = url.searchParams.get("token");
+  const isInlineImageRequest = !action && path && getFileType(path) === "image";
 
   let isAdmin = false;
   let shareVerified = false;
@@ -144,7 +146,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const canDownload = isAdmin || shareVerified || storage.guestDownload;
 
   // List objects - requires list permission
-  if (action === "list" || !action) {
+  if (action === "list" || (!action && !isInlineImageRequest)) {
     if (!canList) {
       return Response.json({ error: "没有浏览权限" }, { status: 403 });
     }
@@ -158,7 +160,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   const client = createClient(storage);
 
   // List objects
-  if (action === "list" || !action) {
+  if (action === "list" || (!action && !isInlineImageRequest)) {
     try {
       const result = await withClientState(client, db, storageId, () => client.listObjects(path));
       return Response.json({
@@ -169,6 +171,42 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     } catch (error) {
       return Response.json(
         { error: error instanceof Error ? error.message : "Failed to list objects" },
+        { status: 500 }
+      );
+    }
+  }
+
+  // Inline image preview via direct file URL, e.g. /api/files/7/images/1.jpg
+  if (isInlineImageRequest) {
+    try {
+      const response = await withClientState(client, db, storageId, () => client.getObject(path));
+      const upstreamContentType = response.headers.get("content-type") || "";
+      const contentType = upstreamContentType.startsWith("image/")
+        ? upstreamContentType
+        : getMimeType(path);
+      const contentLength = response.headers.get("content-length");
+      const fileName = path.split("/").pop() || "image";
+
+      await logAudit(db, {
+        action: "file.preview",
+        userType,
+        ip: meta.ip,
+        userAgent: meta.userAgent,
+        storageId,
+        path,
+        detail: { fileName, contentLength, contentType },
+      });
+
+      return new Response(response.body, {
+        headers: {
+          "Content-Type": contentType,
+          "Content-Disposition": `inline; filename="${encodeURIComponent(fileName)}"`,
+          ...(contentLength ? { "Content-Length": contentLength } : {}),
+        },
+      });
+    } catch (error) {
+      return Response.json(
+        { error: error instanceof Error ? error.message : "Failed to preview image" },
         { status: 500 }
       );
     }

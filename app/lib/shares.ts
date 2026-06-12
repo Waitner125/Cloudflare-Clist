@@ -31,16 +31,37 @@ function generateShareId(): string {
   return `share_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
+function validateShareToken(shareToken: string): void {
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(shareToken)) {
+    throw new Error("分享令牌只能包含字母、数字、下划线或短横线，长度 1-64 位");
+  }
+}
+
+export async function shareTokenExists(db: D1Database, shareToken: string): Promise<boolean> {
+  const result = await db
+    .prepare(`SELECT id FROM shares WHERE share_token = ? LIMIT 1`)
+    .bind(shareToken)
+    .first<{ id: string }>();
+
+  return result !== null;
+}
+
 export async function createShare(
   db: D1Database,
   storageId: number,
   filePath: string,
   isDirectory: boolean,
-  expiresAt?: string
+  expiresAt?: string,
+  customShareToken?: string
 ): Promise<Share> {
   const id = generateShareId();
-  const shareToken = generateRandomToken();
+  const shareToken = customShareToken?.trim() || generateRandomToken();
   const createdAt = new Date().toISOString();
+
+  validateShareToken(shareToken);
+  if (await shareTokenExists(db, shareToken)) {
+    throw new Error("分享令牌已存在，请换一个");
+  }
 
   const query = `
     INSERT INTO shares (id, storage_id, file_path, is_directory, share_token, expires_at, created_at)
