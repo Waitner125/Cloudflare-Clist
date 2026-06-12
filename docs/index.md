@@ -96,4 +96,4 @@ For GitHub Actions deployment, see [Deployment Guide](./deployment.md).
 
 ## License
 
-This project is licensed under the terms specified in the repository.
+This project is released under the [MIT License](../LICENSE).
