@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { getFileType, formatDuration, getCodeLanguage, type FileType } from "~/lib/file-utils";
 import hljs from "highlight.js";
 import { marked } from "marked";
+import { X, Download, Play, Pause } from "~/components/icons";
 
 interface FilePreviewProps {
   storageId: number;
@@ -31,7 +32,12 @@ export function FilePreview({
   const tokenParam = shareToken ? `token=${encodeURIComponent(shareToken)}` : "";
   const inlineFileUrlWithToken = tokenParam ? `${inlineFileUrl}?${tokenParam}` : inlineFileUrl;
   const downloadFileUrl = `${inlineFileUrl}?action=download${tokenParam ? `&${tokenParam}` : ""}`;
-  const previewFileUrlWithToken = fileType === "image" ? inlineFileUrlWithToken : downloadFileUrl;
+  // 图片走 inline 直链；PDF 走 download + inline 参数（避免 iframe 触发下载）；其余走 download
+  const previewFileUrlWithToken = fileType === "image"
+    ? inlineFileUrlWithToken
+    : fileType === "pdf"
+    ? `${downloadFileUrl}&inline=1`
+    : downloadFileUrl;
 
   const getAbsoluteUrl = (url: string) => new URL(url, window.location.origin).href;
   const copyImageLink = () => {
@@ -97,16 +103,18 @@ export function FilePreview({
           <a
             href={downloadFileUrl}
             download={fileName}
-            className="text-zinc-400 hover:text-white text-sm font-mono px-3 py-1 border border-zinc-700 hover:border-zinc-500 rounded transition"
+            className="inline-flex items-center gap-1.5 text-zinc-300 hover:text-white text-sm px-3 py-1.5 border border-zinc-700 hover:border-zinc-500 rounded-md transition"
             onClick={(e) => e.stopPropagation()}
           >
+            <Download className="h-4 w-4" />
             下载
           </a>
           <button
             onClick={onClose}
-            className="text-zinc-400 hover:text-white text-2xl px-2"
+            className="grid h-9 w-9 place-items-center rounded-md text-zinc-400 hover:bg-white/10 hover:text-white transition"
+            aria-label="关闭"
           >
-            ×
+            <X className="h-5 w-5" />
           </button>
         </div>
       </div>
@@ -591,9 +599,9 @@ function AudioPlayer({ url, fileName }: { url: string; fileName: string }) {
         {/* Play/Pause */}
         <button
           onClick={togglePlay}
-          className="w-14 h-14 bg-blue-600 hover:bg-blue-500 rounded-full flex items-center justify-center text-white text-2xl transition"
+          className="grid h-14 w-14 place-items-center rounded-full bg-blue-600 text-white shadow-lg shadow-blue-600/30 hover:bg-blue-500 transition"
         >
-          {isPlaying ? "⏸" : "▶"}
+          {isPlaying ? <Pause className="h-6 w-6" /> : <Play className="h-6 w-6 translate-x-0.5" />}
         </button>
       </div>
 

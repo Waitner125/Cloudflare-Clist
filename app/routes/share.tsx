@@ -13,6 +13,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 import { useState, useEffect } from "react";
 import { FilePreview } from "~/components/FilePreview";
+import { Folder, Download, Link as LinkIcon, Clock, AlertCircle, ChevronRight, Play, fileTypeIcon } from "~/components/icons";
 import { getFileType } from "~/lib/file-utils";
 
 interface S3Object {
@@ -52,36 +53,9 @@ function formatDate(dateStr: string): string {
   return date.toLocaleString("zh-CN");
 }
 
-function getFileIcon(name: string): string {
-  const ext = name.split(".").pop()?.toLowerCase() || "";
-  const iconMap: Record<string, string> = {
-    pdf: "📄",
-    doc: "📝",
-    docx: "📝",
-    xls: "📊",
-    xlsx: "📊",
-    ppt: "🎬",
-    pptx: "🎬",
-    zip: "📦",
-    rar: "📦",
-    "7z": "📦",
-    jpg: "🖼",
-    jpeg: "🖼",
-    png: "🖼",
-    gif: "🖼",
-    mp4: "🎥",
-    avi: "🎥",
-    mkv: "🎥",
-    mp3: "🎵",
-    flac: "🎵",
-    wav: "🎵",
-    txt: "📃",
-    json: "⚙️",
-    xml: "⚙️",
-    yaml: "⚙️",
-    yml: "⚙️",
-  };
-  return iconMap[ext] || "📄";
+function getFileIcon(name: string) {
+  const Icon = fileTypeIcon(getFileType(name));
+  return <Icon className="h-4 w-4 shrink-0" />;
 }
 
 export default function Share({ loaderData }: Route.ComponentProps) {
@@ -188,11 +162,10 @@ export default function Share({ loaderData }: Route.ComponentProps) {
 
   if (error && !share) {
     return (
-      <div className="flex items-center justify-center h-screen bg-white dark:bg-zinc-950">
-        <div className="text-center p-8 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <div className="text-red-500 dark:text-red-400 font-mono text-lg">
-            ❌ {error}
-          </div>
+      <div className="flex items-center justify-center h-screen bg-zinc-100 dark:bg-zinc-950">
+        <div className="flex flex-col items-center gap-3 text-center p-8 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
+          <AlertCircle className="h-8 w-8 text-red-500 dark:text-red-400" />
+          <div className="text-red-600 dark:text-red-400 text-sm">{error}</div>
         </div>
       </div>
     );
@@ -200,29 +173,29 @@ export default function Share({ loaderData }: Route.ComponentProps) {
 
   if (!share || !storage) {
     return (
-      <div className="flex items-center justify-center h-screen bg-white dark:bg-zinc-950">
-        <div className="text-center p-8">
-          <div className="text-zinc-500 dark:text-zinc-400 font-mono">
-            加载中...
-          </div>
-        </div>
+      <div className="flex items-center justify-center h-screen bg-zinc-100 dark:bg-zinc-950">
+        <div className="text-zinc-500 dark:text-zinc-400 text-sm">加载中…</div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-full flex flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
+    <div className="h-screen w-full flex flex-col bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
       {/* Header */}
-      <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
-        <div className="flex items-center justify-between">
+      <div className="px-6 py-4 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0">
+        <div className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 text-white shadow-sm shadow-blue-600/20">
+            <LinkIcon className="h-[18px] w-[18px]" />
+          </span>
           <div>
-            <div className="text-lg font-mono font-bold">🔗 分享内容</div>
-            <div className="text-xs text-zinc-500 font-mono mt-1">
-              存储: {storage.name} | 项目: {share.filePath}
+            <div className="text-lg font-bold tracking-tight">分享内容</div>
+            <div className="text-xs text-zinc-500 mt-0.5">
+              存储: <span className="text-zinc-700 dark:text-zinc-300">{storage.name}</span> · 项目: <span className="text-zinc-700 dark:text-zinc-300">{share.filePath}</span>
             </div>
             {share.expiresAt && (
-              <div className="text-xs text-yellow-600 dark:text-yellow-400 font-mono mt-1">
-                ⏰ 过期时间: {formatDate(share.expiresAt)}
+              <div className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 mt-1">
+                <Clock className="h-3.5 w-3.5" />
+                过期时间: {formatDate(share.expiresAt)}
               </div>
             )}
           </div>
@@ -230,12 +203,13 @@ export default function Share({ loaderData }: Route.ComponentProps) {
       </div>
 
       {/* Breadcrumb */}
-      <div className="px-6 py-3 border-b border-zinc-200 dark:border-zinc-800 shrink-0 flex items-center gap-2 text-sm font-mono">
+      <div className="px-6 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40 shrink-0 flex items-center gap-0.5 text-sm overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           onClick={() => setPath("")}
-          className="text-blue-500 hover:text-blue-400"
+          className="inline-flex items-center gap-1.5 rounded px-1.5 py-1 font-medium text-zinc-600 hover:text-blue-600 dark:text-zinc-300 dark:hover:text-blue-400 shrink-0"
         >
-          📁 根目录
+          <Folder className="h-4 w-4 text-blue-500" />
+          根目录
         </button>
         {path
           .split("/")
@@ -243,11 +217,11 @@ export default function Share({ loaderData }: Route.ComponentProps) {
           .map((part, index, arr) => {
             const fullPath = arr.slice(0, index + 1).join("/");
             return (
-              <div key={fullPath} className="flex items-center gap-2">
-                <span className="text-zinc-400 dark:text-zinc-600">/</span>
+              <div key={fullPath} className="flex items-center shrink-0">
+                <ChevronRight className="h-4 w-4 text-zinc-300 dark:text-zinc-600" />
                 <button
                   onClick={() => navigateTo(fullPath)}
-                  className="text-blue-500 hover:text-blue-400"
+                  className="rounded px-1.5 py-1 text-zinc-500 hover:text-blue-600 dark:text-zinc-400 dark:hover:text-blue-400"
                 >
                   {part}
                 </button>
@@ -259,73 +233,78 @@ export default function Share({ loaderData }: Route.ComponentProps) {
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-32 text-zinc-500 font-mono text-sm">
-            加载中...
+          <div className="flex items-center justify-center gap-2 h-32 text-zinc-500 text-sm">
+            <Folder className="h-4 w-4 animate-spin" />
+            加载中…
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center h-32 text-red-500 dark:text-red-400 font-mono text-sm">
+          <div className="flex items-center justify-center gap-2 h-32 text-red-500 dark:text-red-400 text-sm">
+            <AlertCircle className="h-4 w-4" />
             {error}
           </div>
         ) : objects.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-zinc-400 dark:text-zinc-600 font-mono text-sm">
-            空目录
+          <div className="flex flex-col items-center justify-center h-32 gap-2 text-zinc-400 dark:text-zinc-600">
+            <Folder className="h-8 w-8" />
+            <span className="text-sm">空目录</span>
           </div>
         ) : (
-          <table className="w-full text-sm font-mono">
-            <thead className="text-xs text-zinc-500 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 bg-zinc-50 dark:bg-zinc-900">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-zinc-500 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur">
               <tr>
-                <th className="text-left py-2 px-4 font-normal">名称</th>
-                <th className="text-right py-2 px-4 font-normal w-24">大小</th>
-                <th className="text-right py-2 px-4 font-normal w-44">修改时间</th>
-                <th className="text-right py-2 px-4 font-normal w-24">操作</th>
+                <th className="text-left py-2.5 px-6 font-medium uppercase tracking-wider">名称</th>
+                <th className="text-right py-2.5 px-6 font-medium uppercase tracking-wider w-28">大小</th>
+                <th className="text-right py-2.5 px-6 font-medium uppercase tracking-wider w-44">修改时间</th>
+                <th className="text-right py-2.5 px-6 font-medium uppercase tracking-wider w-20">操作</th>
               </tr>
             </thead>
             <tbody>
               {objects.map((obj) => (
                 <tr
                   key={obj.key}
-                  className="border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/30"
+                  className="border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/40"
                 >
-                  <td className="py-2 px-4">
+                  <td className="py-2 px-6">
                     {obj.isDirectory ? (
                       <button
                         onClick={() => navigateTo(obj.key)}
-                        className="flex items-center gap-2 text-blue-500 hover:text-blue-400"
+                        className="flex items-center gap-2 font-medium text-zinc-700 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400"
                       >
-                        <span className="text-yellow-500">📁</span>
-                        {obj.name}
+                        <Folder className="h-4 w-4 shrink-0 text-blue-500" />
+                        <span className="truncate">{obj.name}</span>
                       </button>
                     ) : (
                       <span className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
-                        <span>{getFileIcon(obj.name)}</span>
-                        {obj.name}
+                        <span className="text-zinc-400 dark:text-zinc-500">{getFileIcon(obj.name)}</span>
+                        <span className="truncate">{obj.name}</span>
                       </span>
                     )}
                   </td>
-                  <td className="py-2 px-4 text-right text-zinc-500">
+                  <td className="py-2 px-6 text-right text-zinc-500 tabular-nums">
                     {obj.isDirectory ? "-" : formatBytes(obj.size)}
                   </td>
-                  <td className="py-2 px-4 text-right text-zinc-500">
+                  <td className="py-2 px-6 text-right text-zinc-500 tabular-nums">
                     {formatDate(obj.lastModified)}
                   </td>
-                  <td className="py-2 px-4 text-right">
+                  <td className="py-1.5 px-6 text-right">
                     {!obj.isDirectory && (
-                      <div className="flex items-center justify-end gap-3">
+                      <div className="flex items-center justify-end gap-0.5">
                         {canPreviewImage(obj) && (
                           <button
                             onClick={() => setPreviewFile(obj)}
-                            className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
+                            className="icon-btn h-7 w-7"
                             title="预览"
+                            aria-label="预览"
                           >
-                            👁
+                            <Play />
                           </button>
                         )}
                         <button
                           onClick={() => downloadFile(obj.key)}
-                          className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
+                          className="icon-btn h-7 w-7"
                           title="下载"
+                          aria-label="下载"
                         >
-                          ↓
+                          <Download />
                         </button>
                       </div>
                     )}
@@ -338,7 +317,7 @@ export default function Share({ loaderData }: Route.ComponentProps) {
       </div>
 
       {/* Footer */}
-      <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 shrink-0 text-xs text-zinc-500 font-mono">
+      <div className="px-6 py-4 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0 text-xs text-zinc-500">
         <div>CList 分享内容</div>
       </div>
 

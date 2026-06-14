@@ -231,10 +231,11 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
         detail: { fileName, contentLength },
       });
 
+      const inline = url.searchParams.get("inline") === "1";
       return new Response(response.body, {
         headers: {
           "Content-Type": contentType,
-          "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+          "Content-Disposition": `${inline ? "inline" : "attachment"}; filename="${encodeURIComponent(fileName)}"`,
           ...(contentLength ? { "Content-Length": contentLength } : {}),
         },
       });

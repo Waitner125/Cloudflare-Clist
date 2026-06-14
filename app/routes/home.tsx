@@ -4,6 +4,12 @@ import { getAllStorages, getPublicStorages, initDatabase } from "~/lib/storage";
 import { useState, useEffect, useCallback } from "react";
 import { FilePreview } from "~/components/FilePreview";
 import { getFileType, isPreviewable } from "~/lib/file-utils";
+import {
+  X, Plus, Search, Sun, Moon, SlidersHorizontal, LogIn, LogOut, ShieldCheck, Cloud,
+  ChevronRight, ArrowLeft, ArrowRightLeft, RefreshCw, PanelLeft,
+  FolderPlus, Upload, Download, Copy, Share2, Pencil, Trash2, Play, BarChart3,
+  Folder, AlertCircle, Github, fileTypeIcon,
+} from "~/components/icons";
 
 export function meta({ data }: Route.MetaArgs) {
   const title = data?.siteTitle || "CList";
@@ -402,37 +408,19 @@ function formatDate(dateStr: string): string {
   return date.toLocaleString("zh-CN");
 }
 
-function StatsIcon({ className = "h-4 w-4" }: { className?: string }) {
+function Modal({ title, onClose, children, maxWidth = "max-w-sm" }: { title: string; onClose: () => void; children: React.ReactNode; maxWidth?: string }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} fill="none" aria-hidden="true">
-      <path
-        d="M5 19h14"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        opacity="0.75"
-      />
-      <path
-        d="M7 16v-3.5M12 16V8M17 16v-5"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-      />
-      <path
-        d="M5.5 10.5 9 7l3.2 3.2 5.7-5.7"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M16.5 4.5h1.9v1.9"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className={`w-full ${maxWidth} rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl`} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">{title}</h3>
+          <button onClick={onClose} className="icon-btn h-7 w-7" aria-label="关闭">
+            <X />
+          </button>
+        </div>
+        <div className="p-4">{children}</div>
+      </div>
+    </div>
   );
 }
 
@@ -468,46 +456,46 @@ function LoginModal({ onLogin, onClose }: { onLogin: () => void; onClose: () => 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-sm rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-sm rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-          <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm">管理员登录</span>
-          <button onClick={onClose} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+          <span className="text-zinc-900 dark:text-zinc-100 font-semibold text-sm">管理员登录</span>
+          <button onClick={onClose} className="icon-btn h-7 w-7" aria-label="关闭"><X /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div>
-            <label className="block text-xs text-zinc-500 mb-1 font-mono">用户名</label>
+            <label className="block text-xs text-zinc-500 mb-1.5">用户名</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+              className="w-full field"
               required
             />
           </div>
           <div>
-            <label className="block text-xs text-zinc-500 mb-1 font-mono">密码</label>
+            <label className="block text-xs text-zinc-500 mb-1.5">密码</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+              className="w-full field"
               required
             />
           </div>
-          {error && <div className="text-red-500 dark:text-red-400 text-xs font-mono">{error}</div>}
+          {error && <div className="text-red-500 dark:text-red-400 text-xs font-medium">{error}</div>}
           <div className="flex gap-2">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2 px-4 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-400 dark:hover:border-zinc-500 text-sm font-mono transition rounded"
+              className="flex-1 py-2 px-4 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-400 dark:hover:border-zinc-500 text-sm transition rounded"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-mono disabled:opacity-50 transition rounded"
+              className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm disabled:opacity-50 transition rounded"
             >
               {loading ? "..." : "登录"}
             </button>
@@ -593,7 +581,7 @@ function StorageModal({
       return null;
     }
 
-    const commonClasses = "w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded";
+    const commonClasses = "w-full field";
     const value = values[field.key] ?? "";
 
     if (field.type === "boolean") {
@@ -605,7 +593,7 @@ function StorageModal({
             onChange={(e) => updateConfigValue(field.key, e.target.checked)}
             className="w-4 h-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded"
           />
-          <span className="text-sm text-zinc-700 dark:text-zinc-300 font-mono">{field.label}</span>
+          <span className="text-sm text-zinc-700 dark:text-zinc-300">{field.label}</span>
           {field.help && <span className="text-xs text-zinc-500">{field.help}</span>}
         </label>
       );
@@ -614,7 +602,7 @@ function StorageModal({
     if (field.type === "select") {
       return (
         <div key={field.key}>
-          <label className="block text-xs text-zinc-500 mb-1 font-mono">{field.label}{field.required ? " *" : ""}</label>
+          <label className="block text-xs text-zinc-500 mb-1.5">{field.label}{field.required ? " *" : ""}</label>
           <select
             value={String(value)}
             onChange={(e) => updateConfigValue(field.key, e.target.value)}
@@ -632,7 +620,7 @@ function StorageModal({
     if (field.type === "textarea") {
       return (
         <div key={field.key}>
-          <label className="block text-xs text-zinc-500 mb-1 font-mono">{field.label}{field.required ? " *" : ""}</label>
+          <label className="block text-xs text-zinc-500 mb-1.5">{field.label}{field.required ? " *" : ""}</label>
           <textarea
             value={String(value)}
             onChange={(e) => updateConfigValue(field.key, e.target.value)}
@@ -646,7 +634,7 @@ function StorageModal({
 
     return (
       <div key={field.key}>
-        <label className="block text-xs text-zinc-500 mb-1 font-mono">{field.label}{field.required ? " *" : ""}</label>
+        <label className="block text-xs text-zinc-500 mb-1.5">{field.label}{field.required ? " *" : ""}</label>
         <input
           type={field.type}
           value={String(value)}
@@ -705,31 +693,31 @@ function StorageModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={onCancel}>
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onCancel}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between sticky top-0 bg-white dark:bg-zinc-900 rounded-t-lg">
-          <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm">{storage ? "编辑存储" : "添加存储"}</span>
-          <button onClick={onCancel} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+          <span className="text-zinc-900 dark:text-zinc-100 font-semibold text-sm">{storage ? "编辑存储" : "添加存储"}</span>
+          <button onClick={onCancel} className="icon-btn h-7 w-7" aria-label="关闭"><X /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-xs text-zinc-500 mb-1 font-mono">名称 *</label>
+              <label className="block text-xs text-zinc-500 mb-1.5">名称 *</label>
               <input
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                className="w-full field"
                 placeholder="My Storage"
                 required
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-xs text-zinc-500 mb-1 font-mono">存储类型 *</label>
+              <label className="block text-xs text-zinc-500 mb-1.5">存储类型 *</label>
               <select
                 value={formData.type}
                 onChange={(e) => handleTypeChange(e.target.value)}
-                className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                className="w-full field"
                 required
               >
                 <option value="s3">S3 兼容服务</option>
@@ -742,14 +730,14 @@ function StorageModal({
             </div>
             {(isS3 || isWebdav) && (
               <div className="col-span-2">
-                <label className="block text-xs text-zinc-500 mb-1 font-mono">
+                <label className="block text-xs text-zinc-500 mb-1.5">
                   {isWebdav ? "WebDAV 服务器地址" : "Endpoint"} *
                 </label>
                 <input
                   type="url"
                   value={formData.endpoint}
                   onChange={(e) => setFormData({ ...formData, endpoint: e.target.value })}
-                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                  className="w-full field"
                   placeholder={isWebdav ? "https://example.com/webdav" : "https://s3.us-east-1.amazonaws.com"}
                   required
                 />
@@ -757,24 +745,24 @@ function StorageModal({
             )}
             {isS3 && (
               <div>
-                <label className="block text-xs text-zinc-500 mb-1 font-mono">Region</label>
+                <label className="block text-xs text-zinc-500 mb-1.5">Region</label>
                 <input
                   type="text"
                   value={formData.region}
                   onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                  className="w-full field"
                   placeholder="auto"
                 />
               </div>
             )}
             {isS3 && (
               <div>
-                <label className="block text-xs text-zinc-500 mb-1 font-mono">Bucket *</label>
+                <label className="block text-xs text-zinc-500 mb-1.5">Bucket *</label>
                 <input
                   type="text"
                   value={formData.bucket}
                   onChange={(e) => setFormData({ ...formData, bucket: e.target.value })}
-                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                  className="w-full field"
                   placeholder="my-bucket"
                   required={isS3}
                 />
@@ -783,36 +771,36 @@ function StorageModal({
             {(isS3 || isWebdav) && (
               <>
                 <div>
-                  <label className="block text-xs text-zinc-500 mb-1 font-mono">
+                  <label className="block text-xs text-zinc-500 mb-1.5">
                     {isWebdav ? "用户名" : "Access Key"} *
                   </label>
                   <input
                     type="text"
                     value={formData.accessKeyId}
                     onChange={(e) => setFormData({ ...formData, accessKeyId: e.target.value })}
-                    className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                    className="w-full field"
                     required={!storage && (isS3 || isWebdav)}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-500 mb-1 font-mono">
+                  <label className="block text-xs text-zinc-500 mb-1.5">
                     {isWebdav ? "密码" : "Secret Key"} {storage && "(留空保持)"}
                   </label>
                   <input
                     type="password"
                     value={formData.secretAccessKey}
                     onChange={(e) => setFormData({ ...formData, secretAccessKey: e.target.value })}
-                    className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                    className="w-full field"
                     required={!storage && (isS3 || isWebdav)}
                   />
                 </div>
                 <div className="col-span-2">
-                  <label className="block text-xs text-zinc-500 mb-1 font-mono">根路径</label>
+                  <label className="block text-xs text-zinc-500 mb-1.5">根路径</label>
                   <input
                     type="text"
                     value={formData.basePath}
                     onChange={(e) => setFormData({ ...formData, basePath: e.target.value })}
-                    className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
+                    className="w-full field"
                     placeholder="/path/to/folder"
                   />
                 </div>
@@ -820,7 +808,7 @@ function StorageModal({
             )}
             {driveConfig && (
               <div className="col-span-2 border-t border-zinc-200 dark:border-zinc-700 pt-3 mt-1">
-                <div className="text-xs text-zinc-500 mb-2 font-mono">驱动配置 - {driveConfig.name}</div>
+                <div className="text-xs text-zinc-500 mb-2 font-medium">驱动配置 - {driveConfig.name}</div>
                 <div className="space-y-3">
                   {driveConfig.fields.map(renderConfigField)}
                 </div>
@@ -842,12 +830,12 @@ function StorageModal({
                   }}
                   className="w-4 h-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded"
                 />
-                <span className="text-sm text-zinc-700 dark:text-zinc-300 font-mono">公开访问</span>
+                <span className="text-sm text-zinc-700 dark:text-zinc-300">公开访问</span>
                 <span className="text-xs text-zinc-500">(快速开启浏览和下载)</span>
               </label>
             </div>
             <div className="col-span-2 border-t border-zinc-200 dark:border-zinc-700 pt-3 mt-1">
-              <div className="text-xs text-zinc-500 mb-2 font-mono">游客权限设置</div>
+              <div className="text-xs text-zinc-500 mb-2 font-medium">游客权限设置</div>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
@@ -856,7 +844,7 @@ function StorageModal({
                     onChange={(e) => setFormData({ ...formData, guestList: e.target.checked })}
                     className="w-4 h-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded"
                   />
-                  <span className="text-sm text-zinc-700 dark:text-zinc-300 font-mono">允许浏览</span>
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">允许浏览</span>
                   <span className="text-xs text-zinc-500">(查看文件列表)</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -866,7 +854,7 @@ function StorageModal({
                     onChange={(e) => setFormData({ ...formData, guestDownload: e.target.checked })}
                     className="w-4 h-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded"
                   />
-                  <span className="text-sm text-zinc-700 dark:text-zinc-300 font-mono">允许下载</span>
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">允许下载</span>
                   <span className="text-xs text-zinc-500">(下载和预览文件)</span>
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -876,25 +864,25 @@ function StorageModal({
                     onChange={(e) => setFormData({ ...formData, guestUpload: e.target.checked })}
                     className="w-4 h-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded"
                   />
-                  <span className="text-sm text-zinc-700 dark:text-zinc-300 font-mono">允许上传</span>
+                  <span className="text-sm text-zinc-700 dark:text-zinc-300">允许上传</span>
                   <span className="text-xs text-zinc-500">(上传新文件)</span>
                 </label>
               </div>
             </div>
           </div>
-          {error && <div className="text-red-500 dark:text-red-400 text-xs font-mono">{error}</div>}
+          {error && <div className="text-red-500 dark:text-red-400 text-xs font-medium">{error}</div>}
           <div className="flex gap-2 pt-2">
             <button
               type="button"
               onClick={onCancel}
-              className="flex-1 py-2 px-4 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-400 dark:hover:border-zinc-500 text-sm font-mono transition rounded"
+              className="flex-1 py-2 px-4 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:border-zinc-400 dark:hover:border-zinc-500 text-sm transition rounded"
             >
               取消
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-mono disabled:opacity-50 transition rounded"
+              className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm disabled:opacity-50 transition rounded"
             >
               {loading ? "保存中..." : "保存"}
             </button>
@@ -1037,18 +1025,18 @@ function SettingsModal({
   }, [activeTab, isAdmin]);
 
   return (
-    <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-md rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-md rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-          <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm">设置</span>
-          <button onClick={onClose} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+          <span className="text-zinc-900 dark:text-zinc-100 font-semibold text-sm">设置</span>
+          <button onClick={onClose} className="icon-btn h-7 w-7" aria-label="关闭"><X /></button>
         </div>
 
         {/* Tabs */}
         <div className="flex border-b border-zinc-200 dark:border-zinc-700">
           <button
             onClick={() => setActiveTab('general')}
-            className={`flex-1 px-4 py-2 text-xs font-mono transition ${
+            className={`flex-1 px-4 py-2 text-xs font-medium transition ${
               activeTab === 'general'
                 ? 'text-blue-500 border-b-2 border-blue-500'
                 : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
@@ -1059,7 +1047,7 @@ function SettingsModal({
           {isAdmin && (
             <button
               onClick={() => setActiveTab('webdav')}
-              className={`flex-1 px-4 py-2 text-xs font-mono transition ${
+              className={`flex-1 px-4 py-2 text-xs font-medium transition ${
                 activeTab === 'webdav'
                   ? 'text-blue-500 border-b-2 border-blue-500'
                   : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
@@ -1071,7 +1059,7 @@ function SettingsModal({
           {isAdmin && (
             <button
               onClick={() => setActiveTab('backup')}
-              className={`flex-1 px-4 py-2 text-xs font-mono transition ${
+              className={`flex-1 px-4 py-2 text-xs font-medium transition ${
                 activeTab === 'backup'
                   ? 'text-blue-500 border-b-2 border-blue-500'
                   : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
@@ -1083,14 +1071,14 @@ function SettingsModal({
           {isAdmin && (
             <button
               onClick={() => setActiveTab('audit')}
-              className={activeTab === 'audit' ? 'flex-1 px-4 py-2 text-xs font-mono transition text-blue-500 border-b-2 border-blue-500' : 'flex-1 px-4 py-2 text-xs font-mono transition text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}
+              className={activeTab === 'audit' ? 'flex-1 px-4 py-2 text-xs font-medium transition text-blue-500 border-b-2 border-blue-500' : 'flex-1 px-4 py-2 text-xs font-medium transition text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'}
             >
               审计
             </button>
           )}
           <button
             onClick={() => setActiveTab('about')}
-            className={`flex-1 px-4 py-2 text-xs font-mono transition ${
+            className={`flex-1 px-4 py-2 text-xs font-medium transition ${
               activeTab === 'about'
                 ? 'text-blue-500 border-b-2 border-blue-500'
                 : 'text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
@@ -1106,12 +1094,12 @@ function SettingsModal({
               {/* Theme Setting */}
               <div className="flex items-center justify-between py-2">
                 <div>
-                  <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono">主题模式</div>
+                  <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold">主题模式</div>
                   <div className="text-xs text-zinc-500">切换亮色或暗色主题</div>
                 </div>
                 <button
                   onClick={onToggleTheme}
-                  className="px-3 py-1.5 text-xs font-mono rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
+                  className="px-3 py-1.5 text-xs font-medium rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition"
                 >
                   {isDark ? '☀ 亮色' : '☾ 暗色'}
                 </button>
@@ -1120,7 +1108,7 @@ function SettingsModal({
               {/* Announcement */}
               {siteAnnouncement && (
                 <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                  <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-2 flex items-center gap-2">
+                  <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2 flex items-center gap-2">
                     <span className="text-yellow-500">📢</span> 公告
                   </div>
                   <div className="text-xs text-zinc-600 dark:text-zinc-400 font-mono whitespace-pre-wrap bg-zinc-50 dark:bg-zinc-800 p-3 rounded border border-zinc-200 dark:border-zinc-700 max-h-32 overflow-y-auto">
@@ -1136,10 +1124,10 @@ function SettingsModal({
               {/* WebDAV Status */}
               <div className="flex items-center justify-between py-2">
                 <div>
-                  <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono">WebDAV 服务</div>
+                  <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold">WebDAV 服务</div>
                   <div className="text-xs text-zinc-500">通过 WebDAV 协议访问存储</div>
                 </div>
-                <span className={`px-2 py-1 text-xs font-mono rounded ${
+                <span className={`px-2 py-1 text-xs font-medium rounded ${
                   webdavEnabled 
                     ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
                     : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
@@ -1152,12 +1140,12 @@ function SettingsModal({
                 <>
                   {/* WebDAV URL */}
                   <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-2">访问地址</div>
+                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">访问地址</div>
                     <div className="text-xs text-zinc-500 mb-3">
                       使用 WebDAV 客户端连接以下地址访问存储
                     </div>
                     <div className="bg-zinc-50 dark:bg-zinc-800 p-3 rounded border border-zinc-200 dark:border-zinc-700">
-                      <div className="text-xs text-zinc-500 mb-1 font-mono">根目录 (所有存储):</div>
+                      <div className="text-xs text-zinc-500 mb-1.5">根目录 (所有存储):</div>
                       <code className="text-sm text-blue-600 dark:text-blue-400 font-mono break-all">
                         {typeof window !== 'undefined' ? `${window.location.origin}/dav/0/` : '/dav/0/'}
                       </code>
@@ -1167,7 +1155,7 @@ function SettingsModal({
                   {/* Storage List with WebDAV URLs */}
                   {storages.length > 0 && (
                     <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                      <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-2">存储访问地址</div>
+                      <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">存储访问地址</div>
                       <div className="space-y-2 max-h-48 overflow-y-auto">
                         {storages.map((storage) => (
                           <div key={storage.id} className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border border-zinc-200 dark:border-zinc-700">
@@ -1183,7 +1171,7 @@ function SettingsModal({
 
                   {/* Authentication Info */}
                   <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-2">认证方式</div>
+                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">认证方式</div>
                     <div className="text-xs text-zinc-600 dark:text-zinc-400 font-mono space-y-1">
                       <p>• 协议: HTTP Basic Authentication</p>
                       <p>• 用户名/密码: 使用 WEBDAV_USERNAME/WEBDAV_PASSWORD 环境变量配置</p>
@@ -1193,7 +1181,7 @@ function SettingsModal({
 
                   {/* Usage Tips */}
                   <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-2 flex items-center gap-2">
+                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2 flex items-center gap-2">
                       <span className="text-blue-500">💡</span> 使用提示
                     </div>
                     <div className="text-xs text-zinc-600 dark:text-zinc-400 font-mono space-y-1">
@@ -1206,7 +1194,7 @@ function SettingsModal({
                 </>
               ) : (
                 <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                  <div className="text-xs text-zinc-500 font-mono space-y-2">
+                  <div className="text-xs text-zinc-500 font-medium space-y-2">
                     <p>WebDAV 服务未启用。要启用 WebDAV，请在 Cloudflare Workers 环境变量中设置:</p>
                     <div className="bg-zinc-50 dark:bg-zinc-800 p-3 rounded border border-zinc-200 dark:border-zinc-700 mt-2">
                       <code className="text-xs text-zinc-700 dark:text-zinc-300">WEBDAV_ENABLED = "true"</code>
@@ -1226,14 +1214,14 @@ function SettingsModal({
             <div className="space-y-4">
               {/* Export Section */}
               <div>
-                <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-2">导出备份</div>
+                <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">导出备份</div>
                 <div className="text-xs text-zinc-500 mb-3">
                   导出所有存储配置到 JSON 文件，包含连接凭证信息。
                 </div>
                 <button
                   onClick={handleExportBackup}
                   disabled={exporting}
-                  className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-mono disabled:opacity-50 transition rounded"
+                  className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm disabled:opacity-50 transition rounded"
                 >
                   {exporting ? "导出中..." : "导出备份文件"}
                 </button>
@@ -1241,14 +1229,14 @@ function SettingsModal({
 
               {/* Import Section */}
               <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-2">恢复备份</div>
+                <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">恢复备份</div>
                 <div className="text-xs text-zinc-500 mb-3">
                   从备份文件恢复存储配置。
                 </div>
 
                 {/* Import Mode Selection */}
                 <div className="mb-3">
-                  <div className="text-xs text-zinc-500 mb-2 font-mono">导入模式:</div>
+                  <div className="text-xs text-zinc-500 mb-2 font-medium">导入模式:</div>
                   <div className="flex gap-4">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -1259,7 +1247,7 @@ function SettingsModal({
                         onChange={() => setImportMode('merge')}
                         className="w-4 h-4"
                       />
-                      <span className="text-sm text-zinc-700 dark:text-zinc-300 font-mono">合并</span>
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">合并</span>
                       <span className="text-xs text-zinc-500">(保留现有)</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -1271,13 +1259,13 @@ function SettingsModal({
                         onChange={() => setImportMode('replace')}
                         className="w-4 h-4"
                       />
-                      <span className="text-sm text-zinc-700 dark:text-zinc-300 font-mono">替换</span>
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">替换</span>
                       <span className="text-xs text-zinc-500">(清空现有)</span>
                     </label>
                   </div>
                 </div>
 
-                <label className={`block w-full py-2 px-4 text-center border-2 border-dashed border-zinc-300 dark:border-zinc-600 hover:border-blue-500 dark:hover:border-blue-500 text-sm font-mono cursor-pointer transition rounded ${importing ? 'opacity-50 pointer-events-none' : ''}`}>
+                <label className={`block w-full py-2 px-4 text-center border-2 border-dashed border-zinc-300 dark:border-zinc-600 hover:border-blue-500 dark:hover:border-blue-500 text-sm cursor-pointer transition rounded ${importing ? 'opacity-50 pointer-events-none' : ''}`}>
                   {importing ? "导入中..." : "选择备份文件"}
                   <input
                     type="file"
@@ -1290,7 +1278,7 @@ function SettingsModal({
 
                 {/* Import Result */}
                 {importResult && (
-                  <div className={`mt-3 p-3 rounded text-xs font-mono whitespace-pre-wrap ${
+                  <div className={`mt-3 p-3 rounded text-xs font-medium whitespace-pre-wrap ${
                     importResult.success
                       ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800'
                       : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800'
@@ -1313,11 +1301,11 @@ function SettingsModal({
           {activeTab === 'audit' && isAdmin && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono">审计日志</div>
+                <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold">审计日志</div>
                 <button
                   onClick={fetchAuditLogs}
                   disabled={auditLoading}
-                  className="px-3 py-1 text-xs font-mono rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-50 transition"
+                  className="px-3 py-1 text-xs font-medium rounded border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700 disabled:opacity-50 transition"
                 >
                   {auditLoading ? '加载中...' : '刷新'}
                 </button>
@@ -1326,14 +1314,14 @@ function SettingsModal({
                 <div className="text-xs text-red-500 dark:text-red-400 font-mono">{auditError}</div>
               )}
               {!auditError && auditLogs.length === 0 && !auditLoading && (
-                <div className="text-xs text-zinc-500 font-mono">暂无日志</div>
+                <div className="text-xs text-zinc-500 font-medium">暂无日志</div>
               )}
               {auditLogs.length > 0 && (
                 <div className="space-y-2 max-h-72 overflow-y-auto">
                   {auditLogs.map((log) => (
                     <div key={log.id} className="border border-zinc-200 dark:border-zinc-700 rounded p-2 bg-zinc-50 dark:bg-zinc-800/50">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-zinc-500 font-mono">{formatDate(log.createdAt)}</span>
+                        <span className="text-xs text-zinc-500 font-medium">{formatDate(log.createdAt)}</span>
                         <span className="text-[11px] text-zinc-400 font-mono">{log.userType}</span>
                       </div>
                       <div className="text-xs text-zinc-800 dark:text-zinc-200 font-mono">{log.action}</div>
@@ -1354,8 +1342,8 @@ function SettingsModal({
           {activeTab === 'about' && (
             <div className="space-y-4">
               <div className="text-center py-4">
-                <div className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 font-mono mb-1">{siteTitle}</div>
-                <div className="text-xs text-zinc-500 font-mono">v1.2.0</div>
+                <div className="text-3xl font-bold text-zinc-900 dark:text-zinc-100 font-semibold mb-1">{siteTitle}</div>
+                <div className="text-xs text-zinc-500 font-medium">v1.2.0</div>
               </div>
               <div className="text-xs text-zinc-600 dark:text-zinc-400 font-mono space-y-2">
                 <p>S3 兼容存储聚合服务</p>
@@ -1363,7 +1351,7 @@ function SettingsModal({
                 <p>作者: ooyyh</p>
                 <p>联系方式: 3266940347@qq.com</p>
               </div>
-              <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 text-xs text-zinc-500 font-mono">
+              <div className="border-t border-zinc-200 dark:border-zinc-800 pt-4 text-xs text-zinc-500 font-medium">
                 <p>Powered by Cloudflare Workers && ooyyh</p>
               </div>
             </div>
@@ -1376,23 +1364,23 @@ function SettingsModal({
 
 function AnnouncementModal({ announcement, onClose }: { announcement: string; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-lg rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-lg rounded-xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-          <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm flex items-center gap-2">
+          <span className="text-zinc-900 dark:text-zinc-100 font-semibold text-sm flex items-center gap-2">
             <span className="text-yellow-500">📢</span> 公告
           </span>
-          <button onClick={onClose} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+          <button onClick={onClose} className="icon-btn h-7 w-7" aria-label="关闭"><X /></button>
         </div>
         <div className="p-4">
-          <p className="text-sm text-zinc-700 dark:text-zinc-300 font-mono whitespace-pre-wrap leading-relaxed">
+          <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap leading-relaxed">
             {announcement}
           </p>
         </div>
         <div className="px-4 pb-4">
           <button
             onClick={onClose}
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-mono transition rounded"
+            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm transition rounded"
           >
             我知道了
           </button>
@@ -1486,40 +1474,40 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
   const dominantType = chartItems[0];
 
   return (
-    <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-3xl max-h-[84vh] rounded-lg shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-3xl max-h-[84vh] rounded-xl shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
-          <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm flex items-center gap-2">
+          <span className="text-zinc-900 dark:text-zinc-100 font-semibold text-sm flex items-center gap-2">
             <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-blue-200 bg-blue-50 text-blue-600 shadow-sm dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300">
-              <StatsIcon className="h-[18px] w-[18px]" />
+              <BarChart3 className="h-[18px] w-[18px]" />
             </span>
             存储统计 - {storage.name}
           </span>
-          <button onClick={onClose} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+          <button onClick={onClose} className="icon-btn h-7 w-7" aria-label="关闭"><X /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <span className="text-zinc-400 dark:text-zinc-500 font-mono text-sm">正在统计中，请稍候...</span>
+              <span className="text-zinc-400 dark:text-zinc-500 text-sm">正在统计中，请稍候...</span>
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-8">
-              <span className="text-red-500 font-mono text-sm">{error}</span>
+              <span className="text-red-500 text-sm">{error}</span>
             </div>
           ) : stats ? (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
-                  <div className="text-xs text-zinc-500 font-mono mb-1">总大小</div>
-                  <div className="text-2xl font-mono text-zinc-900 dark:text-zinc-100">{formatBytes(stats.totalSize)}</div>
+                  <div className="text-xs text-zinc-500 font-medium mb-1">总大小</div>
+                  <div className="text-2xl tabular-nums font-semibold text-zinc-900 dark:text-zinc-100">{formatBytes(stats.totalSize)}</div>
                 </div>
                 <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
-                  <div className="text-xs text-zinc-500 font-mono mb-1">文件数量</div>
-                  <div className="text-2xl font-mono text-zinc-900 dark:text-zinc-100">{stats.fileCount.toLocaleString()}</div>
+                  <div className="text-xs text-zinc-500 font-medium mb-1">文件数量</div>
+                  <div className="text-2xl tabular-nums font-semibold text-zinc-900 dark:text-zinc-100">{stats.fileCount.toLocaleString()}</div>
                 </div>
                 <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
-                  <div className="text-xs text-zinc-500 font-mono mb-1">文件夹数量</div>
-                  <div className="text-2xl font-mono text-zinc-900 dark:text-zinc-100">{stats.folderCount.toLocaleString()}</div>
+                  <div className="text-xs text-zinc-500 font-medium mb-1">文件夹数量</div>
+                  <div className="text-2xl tabular-nums font-semibold text-zinc-900 dark:text-zinc-100">{stats.folderCount.toLocaleString()}</div>
                 </div>
               </div>
 
@@ -1528,7 +1516,7 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
                   <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
                     <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
                       <div className="flex items-center justify-between mb-3">
-                        <div className="text-xs text-zinc-500 font-mono">容量构成</div>
+                        <div className="text-xs text-zinc-500 font-medium">容量构成</div>
                         <div className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">Top {chartItems.length}</div>
                       </div>
                       <div className="flex items-center justify-center">
@@ -1539,15 +1527,15 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
                         >
                           <div className="absolute inset-5 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 flex flex-col items-center justify-center">
                             <div className="text-[11px] text-zinc-500 font-mono">主类型</div>
-                            <div className="text-xl text-zinc-900 dark:text-zinc-100 font-mono">{dominantType ? `.${dominantType.ext}` : "-"}</div>
-                            <div className="text-xs text-zinc-500 font-mono">{dominantType ? `${dominantType.percentage.toFixed(1)}%` : "0%"}</div>
+                            <div className="text-xl text-zinc-900 dark:text-zinc-100 font-semibold">{dominantType ? `.${dominantType.ext}` : "-"}</div>
+                            <div className="text-xs text-zinc-500 font-medium">{dominantType ? `${dominantType.percentage.toFixed(1)}%` : "0%"}</div>
                           </div>
                         </div>
                       </div>
                     </div>
 
                     <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
-                      <div className="text-xs text-zinc-500 font-mono mb-3">类型占比</div>
+                      <div className="text-xs text-zinc-500 font-medium mb-3">类型占比</div>
                       <div className="h-4 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700 flex">
                         {chartItems.map((item) => (
                           <div
@@ -1572,10 +1560,10 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
                   </div>
 
                   <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
-                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-mono mb-3">文件类型排行</div>
+                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-3">文件类型排行</div>
                     <div className="space-y-2.5">
                       {chartItems.map((item) => (
-                        <div key={item.ext} className="grid grid-cols-[minmax(48px,72px)_minmax(0,1fr)_minmax(84px,112px)] items-center gap-2 sm:gap-3 text-xs font-mono">
+                        <div key={item.ext} className="grid grid-cols-[minmax(48px,72px)_minmax(0,1fr)_minmax(84px,112px)] items-center gap-2 sm:gap-3 text-xs font-medium">
                           <div className="truncate text-zinc-700 dark:text-zinc-300">.{item.ext}</div>
                           <div className="h-3 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
                             <div
@@ -1595,7 +1583,7 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
 
               {stats.fileCount === 0 && (
                 <div className="text-center py-8">
-                  <span className="text-zinc-400 dark:text-zinc-500 font-mono text-sm">此存储为空</span>
+                  <span className="text-zinc-400 dark:text-zinc-500 text-sm">此存储为空</span>
                 </div>
               )}
             </div>
@@ -1604,7 +1592,7 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
         <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0">
           <button
             onClick={onClose}
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-mono transition rounded"
+            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm transition rounded"
           >
             关闭
           </button>
@@ -1671,7 +1659,7 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
       }
 
       return (
-        <div key={i} className={`${colorClass} text-sm font-mono`}>
+        <div key={i} className={`${colorClass} text-sm`}>
           {trimmed}
         </div>
       );
@@ -1679,26 +1667,26 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-2xl max-h-[80vh] rounded-lg shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-2xl max-h-[80vh] rounded-xl shadow-2xl flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
-          <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm flex items-center gap-2">
+          <span className="text-zinc-900 dark:text-zinc-100 font-semibold text-sm flex items-center gap-2">
             <span className="text-blue-500">📋</span> 更新日志
           </span>
-          <button onClick={onClose} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+          <button onClick={onClose} className="icon-btn h-7 w-7" aria-label="关闭"><X /></button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center py-8">
-              <span className="text-zinc-400 dark:text-zinc-500 font-mono text-sm">加载中...</span>
+              <span className="text-zinc-400 dark:text-zinc-500 text-sm">加载中...</span>
             </div>
           ) : error ? (
             <div className="flex items-center justify-center py-8">
-              <span className="text-red-500 font-mono text-sm">{error}</span>
+              <span className="text-red-500 text-sm">{error}</span>
             </div>
           ) : releases.length === 0 ? (
             <div className="flex items-center justify-center py-8">
-              <span className="text-zinc-400 dark:text-zinc-500 font-mono text-sm">暂无更新日志</span>
+              <span className="text-zinc-400 dark:text-zinc-500 text-sm">暂无更新日志</span>
             </div>
           ) : (
             <div className="space-y-6">
@@ -1706,7 +1694,7 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
                 <div key={release.version} className="relative">
                   {idx > 0 && <div className="absolute -top-3 left-0 right-0 border-t border-zinc-200 dark:border-zinc-700" />}
                   <div className="flex items-center gap-3 mb-2">
-                    <span className={`px-2 py-0.5 text-xs font-mono rounded ${
+                    <span className={`px-2 py-0.5 text-xs font-medium rounded ${
                       idx === 0
                         ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
                         : "bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400"
@@ -1714,12 +1702,12 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
                       {release.version}
                     </span>
                     {idx === 0 && (
-                      <span className="px-2 py-0.5 text-xs font-mono rounded bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">
+                      <span className="px-2 py-0.5 text-xs font-medium rounded bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400">
                         Latest
                       </span>
                     )}
                     {release.isPrerelease && (
-                      <span className="px-2 py-0.5 text-xs font-mono rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400">
+                      <span className="px-2 py-0.5 text-xs font-medium rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400">
                         Pre-release
                       </span>
                     )}
@@ -1728,7 +1716,7 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
                     </span>
                   </div>
                   {release.name && release.name !== release.version && (
-                    <h3 className="text-sm font-mono text-zinc-800 dark:text-zinc-200 mb-2">{release.name}</h3>
+                    <h3 className="text-sm text-zinc-800 dark:text-zinc-200 mb-2">{release.name}</h3>
                   )}
                   <div className="space-y-1 pl-2 border-l-2 border-zinc-200 dark:border-zinc-700">
                     {parseBody(release.body)}
@@ -1749,7 +1737,7 @@ function ChangelogModal({ onClose }: { onClose: () => void }) {
         <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0">
           <button
             onClick={onClose}
-            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-mono transition rounded"
+            className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm transition rounded"
           >
             关闭
           </button>
@@ -2504,34 +2492,26 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   };
 
   // Get file icon based on type
-  const getFileIcon = (fileName: string) => {
-    const type = getFileType(fileName);
-    switch (type) {
-      case 'video': return '🎬';
-      case 'audio': return '🎵';
-      case 'image': return '🖼️';
-      case 'pdf': return '📕';
-      case 'code': return '📝';
-      case 'markdown': return '📑';
-      case 'text': return '📄';
-      default: return '📄';
-    }
+  const getFileIcon = (fileName: string, className = "h-4 w-4 shrink-0") => {
+    const Icon = fileTypeIcon(getFileType(fileName));
+    return <Icon className={className} />;
   };
 
   return (
     <div className="h-full flex flex-col">
       {/* Toolbar */}
-      <div className="flex items-center justify-between py-2 px-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50">
-        <div className="flex items-center gap-1 text-sm font-mono overflow-x-auto min-w-0">
-          <button onClick={() => setPath("")} className="text-blue-500 hover:text-blue-400 shrink-0">
+      <div className="flex items-center justify-between gap-3 py-2 px-4 border-b border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-900/40">
+        <div className="flex items-center gap-0.5 text-sm overflow-x-auto min-w-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <button onClick={() => setPath("")} className="inline-flex items-center gap-1.5 rounded px-1.5 py-1 font-medium text-zinc-600 hover:text-blue-600 dark:text-zinc-300 dark:hover:text-blue-400 shrink-0">
+            <Folder className="h-4 w-4 text-blue-500" />
             {storage.name}
           </button>
           {breadcrumbs.map((part, i) => (
             <span key={i} className="flex items-center shrink-0">
-              <span className="text-zinc-400 dark:text-zinc-600 mx-1">/</span>
+              <ChevronRight className="h-4 w-4 text-zinc-300 dark:text-zinc-600" />
               <button
                 onClick={() => navigateTo(breadcrumbs.slice(0, i + 1).join("/"))}
-                className="text-blue-500 hover:text-blue-400"
+                className="rounded px-1.5 py-1 text-zinc-500 hover:text-blue-600 dark:text-zinc-400 dark:hover:text-blue-400"
               >
                 {part}
               </button>
@@ -2539,27 +2519,29 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           ))}
           {/* Selection info */}
           {selectedKeys.size > 0 && (
-            <span className="ml-2 text-xs text-zinc-500 font-mono">
-              (已选 {selectedKeys.size} 项)
+            <span className="ml-2 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400 shrink-0">
+              已选 {selectedKeys.size} 项
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="搜索文件..."
-              className="w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 px-2 py-1 text-xs font-mono text-zinc-700 dark:text-zinc-200 rounded focus:border-blue-500 focus:outline-none"
+              className="w-44 rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 py-1.5 pl-7 pr-7 text-xs text-zinc-700 dark:text-zinc-200 placeholder:text-zinc-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-1 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                 title="清空搜索"
+                aria-label="清空搜索"
               >
-                ×
+                <X className="h-3.5 w-3.5" />
               </button>
             )}
           </div>
@@ -2568,38 +2550,44 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
             <button
               onClick={handleBatchDelete}
               disabled={deleting}
-              className="text-xs bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white px-3 py-1 font-mono rounded"
+              className="btn btn-sm btn-danger"
             >
+              <Trash2 />
               {deleting ? "删除中..." : `删除 (${selectedKeys.size})`}
             </button>
           )}
           {path && (
-            <button onClick={goUp} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono px-2 py-1">
-              ← 上级
+            <button onClick={goUp} className="btn btn-sm btn-ghost" title="返回上级目录">
+              <ArrowLeft />
+              上级
             </button>
           )}
-          <button onClick={loadFiles} className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono px-2 py-1">
-            刷新
+          <button onClick={loadFiles} className="icon-btn h-8 w-8" title="刷新" aria-label="刷新">
+            <RefreshCw />
           </button>
           {isAdmin && (
             <>
               <button
                 onClick={() => setShowNewFolderInput(true)}
-                className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono px-2 py-1"
+                className="btn btn-sm btn-ghost"
+                title="新建文件夹"
               >
-                + 文件夹
+                <FolderPlus />
+                文件夹
               </button>
               <button
                 onClick={() => setShowOfflineDownload(true)}
-                className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono px-2 py-1"
+                className="btn btn-sm btn-ghost"
+                title="离线下载"
               >
+                <Download />
                 离线下载
               </button>
             </>
           )}
           {canUpload && (
-            <label className={`text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 font-mono cursor-pointer rounded ${uploadProgress ? 'opacity-50 pointer-events-none' : ''}`}>
-              {uploadProgress ? '上传中...' : '上传'}
+            <label className={`btn btn-sm btn-primary cursor-pointer ${uploadProgress ? 'pointer-events-none opacity-50' : ''}`}>
+              {uploadProgress ? "上传中…" : (<><Upload />上传</>)}
               <input type="file" multiple onChange={handleUpload} className="hidden" disabled={!!uploadProgress} />
             </label>
           )}
@@ -2608,9 +2596,9 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
 
       {/* New Folder Input */}
       {showNewFolderInput && (
-        <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+        <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-500 font-mono">新建文件夹:</span>
+            <span className="text-xs text-zinc-500">新建文件夹:</span>
             <input
               type="text"
               value={newFolderName}
@@ -2623,23 +2611,23 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                 }
               }}
               placeholder="输入文件夹名称"
-              className="flex-1 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-sm font-mono text-zinc-900 dark:text-zinc-100 rounded focus:border-blue-500 focus:outline-none"
+              className="field flex-1 py-1.5"
               autoFocus
               disabled={creatingFolder}
             />
             <button
               onClick={handleCreateFolder}
               disabled={creatingFolder || !newFolderName.trim()}
-              className="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-1 font-mono rounded"
+              className="btn btn-sm btn-primary"
             >
-              {creatingFolder ? "创建中..." : "创建"}
+              {creatingFolder ? "创建中…" : "创建"}
             </button>
             <button
               onClick={() => {
                 setShowNewFolderInput(false);
                 setNewFolderName("");
               }}
-              className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono px-2 py-1"
+              className="btn btn-sm btn-ghost"
             >
               取消
             </button>
@@ -2649,28 +2637,28 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
 
       {/* Offline Download Input */}
       {showOfflineDownload && (
-        <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+        <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40">
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500 font-mono shrink-0">链接地址:</span>
+              <span className="text-xs text-zinc-500 shrink-0">链接地址:</span>
               <input
                 type="url"
                 value={offlineUrl}
                 onChange={(e) => setOfflineUrl(e.target.value)}
                 placeholder="https://example.com/file.zip"
-                className="flex-1 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-sm font-mono text-zinc-900 dark:text-zinc-100 rounded focus:border-blue-500 focus:outline-none"
+                className="field flex-1 py-1.5"
                 autoFocus
                 disabled={offlineDownloading}
               />
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500 font-mono shrink-0">文件名称:</span>
+              <span className="text-xs text-zinc-500 shrink-0">文件名称:</span>
               <input
                 type="text"
                 value={offlineFilename}
                 onChange={(e) => setOfflineFilename(e.target.value)}
                 placeholder="可选，留空自动识别"
-                className="flex-1 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 px-2 py-1 text-sm font-mono text-zinc-900 dark:text-zinc-100 rounded focus:border-blue-500 focus:outline-none"
+                className="field flex-1 py-1.5"
                 disabled={offlineDownloading}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleOfflineDownload();
@@ -2684,9 +2672,10 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
               <button
                 onClick={handleOfflineDownload}
                 disabled={offlineDownloading || !offlineUrl.trim()}
-                className="text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-3 py-1 font-mono rounded whitespace-nowrap"
+                className="btn btn-sm btn-primary whitespace-nowrap"
               >
-                {offlineDownloading ? "下载中..." : "开始下载"}
+                <Download />
+                {offlineDownloading ? "下载中…" : "开始下载"}
               </button>
               <button
                 onClick={() => {
@@ -2695,12 +2684,12 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                   setOfflineFilename("");
                 }}
                 disabled={offlineDownloading}
-                className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono px-2 py-1"
+                className="btn btn-sm btn-ghost"
               >
                 取消
               </button>
             </div>
-            <p className="text-xs text-zinc-400 dark:text-zinc-600 font-mono">
+            <p className="text-xs text-zinc-400 dark:text-zinc-500">
               提示: 文件将下载到当前目录，大文件可能需要较长时间
             </p>
           </div>
@@ -2709,33 +2698,33 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
 
       {/* Upload Progress */}
       {uploadProgress && (
-        <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/50">
+        <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40">
           <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-600 dark:text-zinc-400 font-mono truncate flex-1">
+            <span className="text-xs text-zinc-600 dark:text-zinc-300 truncate flex-1">
               正在上传: {uploadProgress.name}
               {uploadProgress.totalParts && (
-                <span className="text-zinc-400 dark:text-zinc-500 ml-1">
+                <span className="text-zinc-400 dark:text-zinc-500 ml-1 tabular-nums">
                   ({uploadProgress.currentPart}/{uploadProgress.totalParts} 分片)
                 </span>
               )}
             </span>
             {uploadProgress.speed !== undefined && uploadProgress.speed > 0 && (
-              <span className="text-xs text-blue-500 font-mono shrink-0">
+              <span className="text-xs text-blue-500 shrink-0 tabular-nums">
                 {formatSpeed(uploadProgress.speed)}
               </span>
             )}
-            <span className="text-xs text-zinc-500 font-mono w-12 text-right">
+            <span className="text-xs text-zinc-500 w-12 text-right tabular-nums">
               {uploadProgress.progress}%
             </span>
           </div>
-          <div className="mt-1 h-1 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+          <div className="mt-1.5 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-500 transition-all duration-150"
+              className="h-full bg-blue-500 transition-all duration-150 rounded-full"
               style={{ width: `${uploadProgress.progress}%` }}
             />
           </div>
           {uploadProgress.loaded !== undefined && uploadProgress.total !== undefined && (
-            <div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500 font-mono">
+            <div className="mt-1 text-xs text-zinc-400 dark:text-zinc-500 tabular-nums">
               {formatBytes(uploadProgress.loaded)} / {formatBytes(uploadProgress.total)}
             </div>
           )}
@@ -2745,35 +2734,38 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
       {/* Content */}
       <div className="flex-1 overflow-auto">
         {loading ? (
-          <div className="flex items-center justify-center h-32 text-zinc-500 font-mono text-sm">
-            加载中...
+          <div className="flex items-center justify-center gap-2 h-32 text-zinc-500 text-sm">
+            <RefreshCw className="h-4 w-4 animate-spin" />
+            加载中…
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center h-32 text-red-500 dark:text-red-400 font-mono text-sm">
+          <div className="flex items-center justify-center gap-2 h-32 text-red-500 dark:text-red-400 text-sm">
+            <AlertCircle className="h-4 w-4" />
             {error}
           </div>
         ) : objects.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-zinc-400 dark:text-zinc-600 font-mono text-sm">
-            空目录
+          <div className="flex flex-col items-center justify-center h-32 gap-2 text-zinc-400 dark:text-zinc-600">
+            <Folder className="h-8 w-8" />
+            <span className="text-sm">空目录</span>
           </div>
         ) : (
-          <table className="w-full text-sm font-mono">
-            <thead className="text-xs text-zinc-500 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 bg-zinc-50 dark:bg-zinc-900">
+          <table className="w-full text-sm">
+            <thead className="text-xs text-zinc-500 border-b border-zinc-200 dark:border-zinc-800 sticky top-0 bg-zinc-50/95 dark:bg-zinc-900/95 backdrop-blur">
               <tr>
                 {isAdmin && (
-                  <th className="py-2 px-2 w-8">
+                  <th className="py-2.5 px-3 w-10">
                     <input
                       type="checkbox"
                       checked={allVisibleSelected}
                       onChange={toggleSelectAll}
-                      className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800"
+                      className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 accent-blue-600"
                     />
                   </th>
                 )}
-                <th className="text-left py-2 px-4 font-normal">名称</th>
-                <th className="text-right py-2 px-4 font-normal w-24">大小</th>
-                <th className="text-right py-2 px-4 font-normal w-44">修改时间</th>
-                <th className="text-right py-2 px-4 font-normal w-24">操作</th>
+                <th className="text-left py-2.5 px-4 font-medium uppercase tracking-wider">名称</th>
+                <th className="text-right py-2.5 px-4 font-medium uppercase tracking-wider w-28">大小</th>
+                <th className="text-right py-2.5 px-4 font-medium uppercase tracking-wider w-44">修改时间</th>
+                <th className="text-right py-2.5 px-4 font-medium uppercase tracking-wider w-36">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -2781,7 +2773,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                 <tr>
                   <td
                     colSpan={isAdmin ? 5 : 4}
-                    className="py-6 text-center text-zinc-400 dark:text-zinc-600"
+                    className="py-8 text-center text-zinc-400 dark:text-zinc-600"
                   >
                     没有匹配的文件
                   </td>
@@ -2789,17 +2781,17 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
               ) : visibleObjects.map((obj) => (
                 <tr
                   key={obj.key}
-                  className={`border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800/30 ${
+                  className={`border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/40 ${
                     selectedKeys.has(obj.key) ? "bg-blue-50 dark:bg-blue-900/20" : ""
                   }`}
                 >
                   {isAdmin && (
-                    <td className="py-2 px-2">
+                    <td className="py-2 px-3">
                       <input
                         type="checkbox"
                         checked={selectedKeys.has(obj.key)}
                         onChange={() => toggleSelect(obj.key)}
-                        className="w-4 h-4 rounded border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800"
+                        className="h-4 w-4 rounded border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 accent-blue-600"
                       />
                     </td>
                   )}
@@ -2807,116 +2799,56 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                     {obj.isDirectory ? (
                       <button
                         onClick={() => navigateTo(obj.key)}
-                        className="flex items-center gap-2 text-blue-500 hover:text-blue-400"
+                        className="flex items-center gap-2 font-medium text-zinc-700 dark:text-zinc-200 hover:text-blue-600 dark:hover:text-blue-400"
                       >
-                        <span className="text-yellow-500">📁</span>
-                        {obj.name}
+                        <Folder className="h-4 w-4 shrink-0 text-blue-500" />
+                        <span className="truncate">{obj.name}</span>
                       </button>
                     ) : isPreviewable(obj.name) ? (
                       <button
                         onClick={() => handlePreview(obj)}
-                        className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300 hover:text-blue-500 dark:hover:text-blue-400"
+                        className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300 hover:text-blue-600 dark:hover:text-blue-400"
                       >
-                        <span>{getFileIcon(obj.name)}</span>
-                        {obj.name}
+                        {getFileIcon(obj.name)}
+                        <span className="truncate">{obj.name}</span>
                       </button>
                     ) : (
                       <span className="flex items-center gap-2 text-zinc-700 dark:text-zinc-300">
                         <span className="text-zinc-400 dark:text-zinc-500">{getFileIcon(obj.name)}</span>
-                        {obj.name}
+                        <span className="truncate">{obj.name}</span>
                       </span>
                     )}
                   </td>
-                  <td className="py-2 px-4 text-right text-zinc-500">
+                  <td className="py-2 px-4 text-right text-zinc-500 tabular-nums">
                     {obj.isDirectory ? "-" : formatBytes(obj.size)}
                   </td>
-                  <td className="py-2 px-4 text-right text-zinc-500">
+                  <td className="py-2 px-4 text-right text-zinc-500 tabular-nums">
                     {formatDate(obj.lastModified)}
                   </td>
-                  <td className="py-2 px-4 text-right">
+                  <td className="py-1.5 px-3 text-right">
                     {obj.isDirectory ? (
                       isAdmin && (
-                        <div className="flex items-center justify-end gap-2">
-                          <button
-                            onClick={() => startShare(obj)}
-                            className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
-                            title="分享"
-                          >
-                            🡭
-                          </button>
-                          <button
-                            onClick={() => startRename(obj)}
-                            className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
-                            title="重命名"
-                          >
-                            ✎
-                          </button>
-                          <button
-                            onClick={() => startMove(obj)}
-                            className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
-                            title="移动"
-                          >
-                            ⤷
-                          </button>
-                          <button
-                            onClick={() => deleteFolder(obj.key, obj.name)}
-                            className="text-zinc-400 dark:text-zinc-500 hover:text-red-500"
-                            title="删除文件夹"
-                          >
-                            ×
-                          </button>
+                        <div className="flex items-center justify-end gap-0.5">
+                          <button onClick={() => startShare(obj)} className="icon-btn h-7 w-7" title="分享" aria-label="分享"><Share2 /></button>
+                          <button onClick={() => startRename(obj)} className="icon-btn h-7 w-7" title="重命名" aria-label="重命名"><Pencil /></button>
+                          <button onClick={() => startMove(obj)} className="icon-btn h-7 w-7" title="移动" aria-label="移动"><ArrowRightLeft /></button>
+                          <button onClick={() => deleteFolder(obj.key, obj.name)} className="icon-btn h-7 w-7 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10" title="删除文件夹" aria-label="删除文件夹"><Trash2 /></button>
                         </div>
                       )
                     ) : (
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-0.5">
                         {canDownload && isPreviewable(obj.name) && (
-                          <button
-                            onClick={() => handlePreview(obj)}
-                            className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
-                            title="预览"
-                          >
-                            ▶
-                          </button>
+                          <button onClick={() => handlePreview(obj)} className="icon-btn h-7 w-7" title="预览" aria-label="预览"><Play /></button>
                         )}
                         {canDownload && (
-                          <button
-                            onClick={() => downloadFile(obj.key)}
-                            className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
-                            title="下载"
-                          >
-                            ↓
-                          </button>
+                          <button onClick={() => downloadFile(obj.key)} className="icon-btn h-7 w-7" title="下载" aria-label="下载"><Download /></button>
                         )}
                         {isAdmin && (
                           <>
-                            <button
-                              onClick={() => startShare(obj)}
-                              className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
-                              title="分享"
-                            >
-                              🡭
-                            </button>
-                            <button
-                              onClick={() => startRename(obj)}
-                              className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
-                              title="重命名"
-                            >
-                              ✎
-                            </button>
-                            <button
-                              onClick={() => startMove(obj)}
-                              className="text-zinc-400 dark:text-zinc-500 hover:text-blue-500"
-                              title="移动"
-                            >
-                              ⤷
-                            </button>
-                            <button
-                              onClick={() => deleteFile(obj.key)}
-                              className="text-zinc-400 dark:text-zinc-500 hover:text-red-500"
-                              title="删除"
-                            >
-                              ×
-                            </button>
+                            <button onClick={() => startShare(obj)} className="icon-btn h-7 w-7" title="分享" aria-label="分享"><Share2 /></button>
+                            <button onClick={() => startRename(obj)} className="icon-btn h-7 w-7" title="重命名" aria-label="重命名"><Pencil /></button>
+                            <button onClick={() => startMove(obj)} className="icon-btn h-7 w-7" title="移动" aria-label="移动"><ArrowRightLeft /></button>
+                            <button onClick={() => deleteFile(obj.key)} className="icon-btn h-7 w-7 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10" title="删除" aria-label="删除"><Trash2 /></button>
                           </>
                         )}
                       </div>
@@ -2945,199 +2877,119 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
 
       {/* Rename Modal */}
       {renameTarget && (
-        <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setRenameTarget(null)}>
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-sm rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-              <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm">重命名</span>
-              <button onClick={() => setRenameTarget(null)} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+        <Modal title="重命名" onClose={() => setRenameTarget(null)}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1.5">新名称</label>
+              <input
+                type="text"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleRename()}
+                className="field"
+                autoFocus
+              />
             </div>
-            <div className="p-4 space-y-4">
-              <div>
-                <label className="block text-xs text-zinc-500 mb-1 font-mono">新名称</label>
-                <input
-                  type="text"
-                  value={renameValue}
-                  onChange={(e) => setRenameValue(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleRename()}
-                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
-                  autoFocus
-                />
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setRenameTarget(null)}
-                  className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleRename}
-                  disabled={renaming || !renameValue.trim()}
-                  className="flex-1 px-3 py-2 bg-blue-500 text-white text-sm hover:bg-blue-600 disabled:opacity-50 rounded"
-                >
-                  {renaming ? "处理中..." : "确定"}
-                </button>
-              </div>
+            <div className="flex gap-2">
+              <button onClick={() => setRenameTarget(null)} className="btn btn-outline flex-1 py-2">取消</button>
+              <button onClick={handleRename} disabled={renaming || !renameValue.trim()} className="btn btn-primary flex-1 py-2">{renaming ? "处理中…" : "确定"}</button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Share Modal */}
       {shareTarget && (
-        <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShareTarget(null)}>
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-sm rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-              <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm">生成分享链接</span>
-              <button onClick={() => setShareTarget(null)} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
-            </div>
-            <div className="p-4 space-y-4">
-              <div className="text-xs text-zinc-500 mb-2 font-mono">
-                分享: {shareTarget.name}
-              </div>
+        <Modal title="生成分享链接" onClose={() => setShareTarget(null)}>
+          <div className="space-y-4">
+            <div className="text-xs text-zinc-500">分享: <span className="text-zinc-700 dark:text-zinc-300">{shareTarget.name}</span></div>
 
-              {!shareUrl ? (
-                <>
+            {!shareUrl ? (
+              <>
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1.5">自定义分享令牌（可选）</label>
+                  <input
+                    type="text"
+                    value={customShareToken}
+                    onChange={(e) => setCustomShareToken(e.target.value)}
+                    placeholder="留空则自动生成"
+                    className="field"
+                  />
+                  <div className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
+                    仅支持字母、数字、下划线和短横线，且不能重复
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1.5">过期时间</label>
+                  <select
+                    value={shareExpireHours}
+                    onChange={(e) => setShareExpireHours(parseInt(e.target.value, 10))}
+                    className="field"
+                  >
+                    <option value={0}>永不过期</option>
+                    <option value={1}>1 小时</option>
+                    <option value={24}>1 天</option>
+                    <option value={168}>1 周</option>
+                    <option value={720}>1 月</option>
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setShareTarget(null)} className="btn btn-outline flex-1 py-2">取消</button>
+                  <button onClick={handleCreateShare} disabled={creatingShare} className="btn btn-primary flex-1 py-2">{creatingShare ? "生成中…" : "生成链接"}</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-3">
                   <div>
-                    <label className="block text-xs text-zinc-500 mb-1 font-mono">自定义分享令牌（可选）</label>
-                    <input
-                      type="text"
-                      value={customShareToken}
-                      onChange={(e) => setCustomShareToken(e.target.value)}
-                      placeholder="留空则自动生成"
-                      className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
-                    />
-                    <div className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">
-                      仅支持字母、数字、下划线和短横线，且不能重复
+                    <label className="block text-xs text-zinc-500 mb-1.5">分享令牌</label>
+                    <div className="flex gap-2">
+                      <input type="text" value={shareToken} readOnly className="field flex-1 text-xs" />
+                      <button onClick={() => copyToClipboard(shareToken)} className="btn btn-outline py-2"><Copy />复制</button>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs text-zinc-500 mb-1 font-mono">过期时间</label>
-                    <select
-                      value={shareExpireHours}
-                      onChange={(e) => setShareExpireHours(parseInt(e.target.value, 10))}
-                      className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
-                    >
-                      <option value={0}>永不过期</option>
-                      <option value={1}>1 小时</option>
-                      <option value={24}>1 天</option>
-                      <option value={168}>1 周</option>
-                      <option value={720}>1 月</option>
-                    </select>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShareTarget(null)}
-                      className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
-                    >
-                      取消
-                    </button>
-                    <button
-                      onClick={handleCreateShare}
-                      disabled={creatingShare}
-                      className="flex-1 px-3 py-2 bg-blue-500 text-white text-sm hover:bg-blue-600 disabled:opacity-50 rounded"
-                    >
-                      {creatingShare ? "生成中..." : "生成链接"}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="space-y-2">
-                    <div>
-                      <label className="block text-xs text-zinc-500 mb-1 font-mono">分享令牌</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={shareToken}
-                          readOnly
-                          className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-xs rounded"
-                        />
-                        <button
-                          onClick={() => copyToClipboard(shareToken)}
-                          className="px-3 py-2 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-sm rounded text-zinc-900 dark:text-zinc-100"
-                        >
-                          复制
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-zinc-500 mb-1 font-mono">分享链接</label>
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={shareUrl}
-                          readOnly
-                          className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-xs rounded overflow-hidden"
-                        />
-                        <button
-                          onClick={() => copyToClipboard(shareUrl)}
-                          className="px-3 py-2 bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-sm rounded text-zinc-900 dark:text-zinc-100"
-                        >
-                          复制
-                        </button>
-                      </div>
+                    <label className="block text-xs text-zinc-500 mb-1.5">分享链接</label>
+                    <div className="flex gap-2">
+                      <input type="text" value={shareUrl} readOnly className="field flex-1 text-xs" />
+                      <button onClick={() => copyToClipboard(shareUrl)} className="btn btn-outline py-2"><Copy />复制</button>
                     </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShareTarget(null)}
-                      className="flex-1 px-3 py-2 bg-blue-500 text-white text-sm hover:bg-blue-600 rounded"
-                    >
-                      完成
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setShareTarget(null)} className="btn btn-primary flex-1 py-2">完成</button>
+                </div>
+              </>
+            )}
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Move Modal */}
       {moveTarget && (
-        <div className="fixed inset-0 bg-black/60 dark:bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setMoveTarget(null)}>
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-sm rounded-lg shadow-xl" onClick={e => e.stopPropagation()}>
-            <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between">
-              <span className="text-zinc-900 dark:text-zinc-100 font-mono text-sm">移动到</span>
-              <button onClick={() => setMoveTarget(null)} className="text-zinc-400 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300">×</button>
+        <Modal title="移动到" onClose={() => setMoveTarget(null)}>
+          <div className="space-y-4">
+            <div className="text-xs text-zinc-500">移动: <span className="text-zinc-700 dark:text-zinc-300">{moveTarget.name}</span></div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1.5">目标文件夹</label>
+              <select
+                value={moveDestPath}
+                onChange={(e) => setMoveDestPath(e.target.value)}
+                className="field"
+              >
+                {allFolders.map((folder) => (
+                  <option key={folder} value={folder}>
+                    {folder === "" ? "/ (根目录)" : "/" + folder}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="p-4 space-y-4">
-              <div className="text-xs text-zinc-500 mb-2 font-mono">
-                移动: {moveTarget.name}
-              </div>
-              <div>
-                <label className="block text-xs text-zinc-500 mb-1 font-mono">目标文件夹</label>
-                <select
-                  value={moveDestPath}
-                  onChange={(e) => setMoveDestPath(e.target.value)}
-                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-100 font-mono text-sm focus:border-blue-500 focus:outline-none rounded"
-                >
-                  {allFolders.map((folder) => (
-                    <option key={folder} value={folder}>
-                      {folder === "" ? "/ (根目录)" : "/" + folder}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setMoveTarget(null)}
-                  className="flex-1 px-3 py-2 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={handleMove}
-                  disabled={moving}
-                  className="flex-1 px-3 py-2 bg-blue-500 text-white text-sm hover:bg-blue-600 disabled:opacity-50 rounded"
-                >
-                  {moving ? "处理中..." : "确定"}
-                </button>
-              </div>
+            <div className="flex gap-2">
+              <button onClick={() => setMoveTarget(null)} className="btn btn-outline flex-1 py-2">取消</button>
+              <button onClick={handleMove} disabled={moving} className="btn btn-primary flex-1 py-2">{moving ? "处理中…" : "确定"}</button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
@@ -3269,41 +3121,55 @@ export default function Home({ loaderData }: Route.ComponentProps) {
     <div className="h-screen overflow-hidden bg-zinc-100 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors flex flex-col">
       {/* Header */}
       <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shrink-0">
-        <div className="px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3 shrink-0">
-            <span className="text-xl font-bold font-mono tracking-tight">CList</span>
+        <div className="px-4 py-2.5 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-blue-600 text-white shadow-sm shadow-blue-600/20">
+              <Cloud className="h-[18px] w-[18px]" />
+            </span>
+            <span className="text-lg font-bold tracking-tight">CList</span>
           </div>
           <div className="flex-1 text-center min-w-0">
-            <span className="text-sm font-mono text-zinc-600 dark:text-zinc-400 truncate block">{siteTitle}</span>
+            <span className="text-sm text-zinc-500 dark:text-zinc-400 truncate block">{siteTitle}</span>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={toggleTheme}
-              className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono px-2 py-1 whitespace-nowrap"
+              className="icon-btn h-8 w-8"
+              title={isDark ? "切换到亮色" : "切换到暗色"}
+              aria-label="切换主题"
             >
-              {isDark ? "☀ 亮色" : "☾ 暗色"}
+              {isDark ? <Sun /> : <Moon />}
             </button>
             <button
               onClick={() => setShowSettings(true)}
-              className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono px-2 py-1 whitespace-nowrap"
+              className="icon-btn h-8 w-8"
+              title="设置"
+              aria-label="设置"
             >
-              ⚙ 设置
+              <SlidersHorizontal />
             </button>
             {isAdmin ? (
               <>
-                <span className="text-xs text-green-600 dark:text-green-500 font-mono whitespace-nowrap">● 管理员</span>
+                <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-1 text-xs font-medium text-green-600 dark:text-green-400">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  管理员
+                </span>
                 <button
                   onClick={handleLogout}
-                  className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono whitespace-nowrap"
+                  className="btn btn-sm btn-ghost"
+                  title="登出"
                 >
+                  <LogOut />
                   登出
                 </button>
               </>
             ) : (
               <button
                 onClick={() => setShowLogin(true)}
-                className="text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 font-mono whitespace-nowrap"
+                className="btn btn-sm btn-ghost"
+                title="登录"
               >
+                <LogIn />
                 登录
               </button>
             )}
@@ -3315,78 +3181,82 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         {/* Sidebar */}
         <aside className={`${sidebarCollapsed ? "w-0" : "w-64"} border-r border-zinc-200 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900/50 flex flex-col transition-all duration-300 overflow-hidden relative`}>
           <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between shrink-0">
-            <span className="text-xs text-zinc-500 font-mono uppercase tracking-wider whitespace-nowrap">存储列表</span>
-            <div className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500 font-medium uppercase tracking-wider whitespace-nowrap">存储列表</span>
+            <div className="flex items-center gap-1">
               {isAdmin && (
                 <button
                   onClick={() => { setEditingStorage(null); setShowStorageForm(true); }}
-                  className="text-xs text-blue-500 hover:text-blue-400 font-mono whitespace-nowrap"
+                  className="icon-btn h-7 w-7 text-blue-500 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-500/10"
+                  title="添加存储"
+                  aria-label="添加存储"
                 >
-                  + 添加
+                  <Plus />
                 </button>
               )}
               <button
                 onClick={() => setSidebarCollapsed(true)}
-                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-sm"
+                className="icon-btn h-7 w-7"
                 title="收起侧边栏"
+                aria-label="收起侧边栏"
               >
-                ‹
+                <PanelLeft />
               </button>
             </div>
           </div>
-          <div className="overflow-y-auto flex-1">
+          <div className="overflow-y-auto flex-1 py-1">
             {storages.length === 0 ? (
-              <div className="p-4 text-center text-zinc-400 dark:text-zinc-600 text-xs font-mono whitespace-nowrap">
+              <div className="p-4 text-center text-zinc-400 dark:text-zinc-600 text-xs whitespace-nowrap">
                 暂无存储
               </div>
             ) : (
               storages.map((s) => (
                 <div
                   key={s.id}
-                  className={`group flex items-center justify-between px-3 py-2 cursor-pointer border-l-2 transition ${
+                  className={`group flex items-center justify-between mx-1 my-0.5 rounded-lg pl-3 pr-1.5 py-2 cursor-pointer transition-colors ${
                     selectedStorage?.id === s.id
-                      ? "border-blue-500 bg-blue-50 dark:bg-zinc-800/50"
-                      : "border-transparent hover:bg-zinc-50 dark:hover:bg-zinc-800/30"
+                      ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300"
+                      : "hover:bg-zinc-100 dark:hover:bg-zinc-800/60"
                   }`}
                   onClick={() => setSelectedStorage(s)}
                   onTouchStart={() => setSelectedStorage(s)}
                 >
-                  <div className="min-w-0">
-                    <div className={`text-sm font-mono truncate ${selectedStorage?.id === s.id ? "text-zinc-900 dark:text-zinc-100" : "text-zinc-600 dark:text-zinc-400"}`}>
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-sm font-medium truncate ${selectedStorage?.id === s.id ? "" : "text-zinc-700 dark:text-zinc-300"}`}>
                       {s.name}
                     </div>
-                    <div className="text-xs text-zinc-400 dark:text-zinc-600 font-mono whitespace-nowrap">
+                    <span className={`mt-0.5 inline-flex items-center gap-1 text-xs ${s.isPublic ? "text-green-600 dark:text-green-400" : "text-zinc-400 dark:text-zinc-500"}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${s.isPublic ? "bg-green-500" : "bg-zinc-400 dark:bg-zinc-600"}`} />
                       {s.isPublic ? "公开" : "私有"}
-                    </div>
+                    </span>
                   </div>
                   {isAdmin && (
                     <div 
-                        className={`${
-                          true ? "flex" : "hidden"
-                        } items-center gap-1`}
+                        className="flex items-center gap-0.5"
                         onClick={(e) => e.stopPropagation()}
                      >
                       <button
                         onClick={() => { setStatsStorage(s); setShowStats(true); }}
-                        className="relative grid h-7 w-7 place-items-center rounded-md border border-zinc-200/70 bg-white/80 text-zinc-500 shadow-sm hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600 dark:border-zinc-700/70 dark:bg-zinc-900/80 dark:text-zinc-500 dark:hover:border-blue-400/40 dark:hover:bg-blue-500/10 dark:hover:text-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40 transition cursor-pointer"
+                        className="icon-btn h-7 w-7"
                         title="统计"
                         aria-label="统计"
                       >
-                        <StatsIcon className="h-4 w-4" />
+                        <BarChart3 />
                       </button>
                       <button
                         onClick={() => { setEditingStorage(s); setShowStorageForm(true); }}
-                        className="text-zinc-400 dark:text-zinc-600 hover:text-zinc-700 dark:hover:text-zinc-300 text-xs px-1"
+                        className="icon-btn h-7 w-7"
                         title="编辑"
+                        aria-label="编辑"
                       >
-                        ✎
+                        <Pencil />
                       </button>
                       <button
                         onClick={() => handleDeleteStorage(s)}
-                        className="text-zinc-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 text-xs px-1"
+                        className="icon-btn h-7 w-7 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10"
                         title="删除"
+                        aria-label="删除"
                       >
-                        ×
+                        <Trash2 />
                       </button>
                     </div>
                   )}
@@ -3400,10 +3270,11 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         {sidebarCollapsed && (
           <button
             onClick={() => setSidebarCollapsed(false)}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-4 h-8 flex items-center justify-center bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-500 dark:text-zinc-400 rounded-r text-xs shadow-sm transition-colors"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 grid h-10 w-5 place-items-center rounded-r-md bg-white dark:bg-zinc-800 border border-l-0 border-zinc-200 dark:border-zinc-700 text-zinc-500 shadow-sm hover:text-blue-500 transition-colors"
             title="展开侧边栏"
+            aria-label="展开侧边栏"
           >
-            ›
+            <ChevronRight className="h-4 w-4" />
           </button>
         )}
 
@@ -3412,8 +3283,9 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           {selectedStorage ? (
             <FileBrowser storage={selectedStorage} isAdmin={isAdmin} isDark={isDark} chunkSizeMB={chunkSizeMB} />
           ) : (
-            <div className="flex items-center justify-center h-full text-zinc-400 dark:text-zinc-600 font-mono text-sm">
-              ← 选择存储以浏览文件
+            <div className="flex flex-col items-center justify-center h-full gap-3 text-zinc-400 dark:text-zinc-600">
+              <Cloud className="h-12 w-12 text-zinc-300 dark:text-zinc-700" />
+              <span className="text-sm">选择左侧存储以浏览文件</span>
             </div>
           )}
         </main>
@@ -3421,26 +3293,27 @@ export default function Home({ loaderData }: Route.ComponentProps) {
 
       {/* Footer */}
       <footer className="shrink-0 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-2">
-        <div className="flex items-center justify-center gap-4 text-xs text-zinc-500 dark:text-zinc-500 font-mono">
+        <div className="flex items-center justify-center gap-3 text-xs text-zinc-500 dark:text-zinc-500">
           <a
             href="https://github.com/ooyyh/Cloudflare-Clist"
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:text-zinc-700 dark:hover:text-zinc-300 transition"
+            className="inline-flex items-center gap-1 hover:text-zinc-800 dark:hover:text-zinc-200 transition"
           >
+            <Github className="h-3.5 w-3.5" />
             GitHub
           </a>
-          <span className="text-zinc-300 dark:text-zinc-700">|</span>
+          <span className="text-zinc-300 dark:text-zinc-700">·</span>
           <button
             onClick={() => setShowChangelog(true)}
-            className="hover:text-zinc-700 dark:hover:text-zinc-300 transition"
+            className="hover:text-zinc-800 dark:hover:text-zinc-200 transition"
           >
             更新日志
           </button>
-          <span className="text-zinc-300 dark:text-zinc-700">|</span>
-          <span>Made by <span className="text-zinc-600 dark:text-zinc-400">ooyyh</span></span>
-          <span className="text-zinc-300 dark:text-zinc-700">|</span>
-          <span className="flex items-center gap-1">
+          <span className="text-zinc-300 dark:text-zinc-700">·</span>
+          <span>Made by <span className="text-zinc-700 dark:text-zinc-300">ooyyh</span></span>
+          <span className="text-zinc-300 dark:text-zinc-700">·</span>
+          <span className="inline-flex items-center gap-1">
             Powered by
             <a
               href="https://www.cloudflare.com"
