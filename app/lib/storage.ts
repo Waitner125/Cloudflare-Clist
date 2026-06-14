@@ -287,8 +287,9 @@ export async function deleteStorage(
 
 export async function initDatabase(db: D1Database): Promise<void> {
   // 建表（新库）；已存在的表不受 CREATE IF NOT EXISTS 影响
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS storages (
+  // 注意: D1 的 exec() 按换行分割语句，故每条 DDL 单独 prepare().run()
+  const ddl = [
+    `CREATE TABLE IF NOT EXISTS storages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
       type TEXT NOT NULL DEFAULT 's3',
@@ -306,14 +307,14 @@ export async function initDatabase(db: D1Database): Promise<void> {
       guest_upload INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
+    )`,
+    `CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
       user_type TEXT NOT NULL DEFAULT 'guest',
       created_at TEXT DEFAULT (datetime('now')),
       expires_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS shares (
+    )`,
+    `CREATE TABLE IF NOT EXISTS shares (
       id TEXT PRIMARY KEY,
       storage_id INTEGER NOT NULL,
       file_path TEXT NOT NULL,
@@ -322,8 +323,8 @@ export async function initDatabase(db: D1Database): Promise<void> {
       expires_at TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (storage_id) REFERENCES storages(id) ON DELETE CASCADE
-    );
-    CREATE TABLE IF NOT EXISTS audit_logs (
+    )`,
+    `CREATE TABLE IF NOT EXISTS audit_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       action TEXT NOT NULL,
       storage_id INTEGER,
@@ -334,22 +335,25 @@ export async function initDatabase(db: D1Database): Promise<void> {
       detail TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (storage_id) REFERENCES storages(id) ON DELETE SET NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_storages_is_public ON storages(is_public);
-    CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
-    CREATE INDEX IF NOT EXISTS idx_shares_token ON shares(share_token);
-    CREATE INDEX IF NOT EXISTS idx_shares_storage_id ON shares(storage_id);
-  `);
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_storages_is_public ON storages(is_public)`,
+    `CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`,
+    `CREATE INDEX IF NOT EXISTS idx_shares_token ON shares(share_token)`,
+    `CREATE INDEX IF NOT EXISTS idx_shares_storage_id ON shares(storage_id)`,
+  ];
+  for (const stmt of ddl) {
+    await db.prepare(stmt).run();
+  }
 
   // 迁移：为旧版 storages 表补 config_json / saving_json 列（旧 schema 缺这两列）
   const cols = await db.prepare("PRAGMA table_info(storages)").all<{ name: string }>();
   const names = new Set((cols.results ?? []).map((c) => c.name));
   if (names.size > 0) {
     if (!names.has("config_json")) {
-      await db.exec("ALTER TABLE storages ADD COLUMN config_json TEXT DEFAULT '{}'");
+      await db.prepare("ALTER TABLE storages ADD COLUMN config_json TEXT DEFAULT '{}'").run();
     }
     if (!names.has("saving_json")) {
-      await db.exec("ALTER TABLE storages ADD COLUMN saving_json TEXT DEFAULT '{}'");
+      await db.prepare("ALTER TABLE storages ADD COLUMN saving_json TEXT DEFAULT '{}'").run();
     }
   }
 }
