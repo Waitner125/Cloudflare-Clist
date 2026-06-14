@@ -9,6 +9,7 @@ interface FilePreviewProps {
   fileKey: string;
   fileName: string;
   shareToken?: string;
+  password?: string;
   onClose: () => void;
   onPrev?: () => void;
   onNext?: () => void;
@@ -21,6 +22,7 @@ export function FilePreview({
   fileKey,
   fileName,
   shareToken,
+  password,
   onClose,
   onPrev,
   onNext,
@@ -29,9 +31,12 @@ export function FilePreview({
 }: FilePreviewProps) {
   const fileType = getFileType(fileName);
   const inlineFileUrl = `/api/files/${storageId}/${fileKey}`;
-  const tokenParam = shareToken ? `token=${encodeURIComponent(shareToken)}` : "";
-  const inlineFileUrlWithToken = tokenParam ? `${inlineFileUrl}?${tokenParam}` : inlineFileUrl;
-  const downloadFileUrl = `${inlineFileUrl}?action=download${tokenParam ? `&${tokenParam}` : ""}`;
+  const queryParams = [
+    shareToken ? `token=${encodeURIComponent(shareToken)}` : "",
+    password ? `password=${encodeURIComponent(password)}` : "",
+  ].filter(Boolean).join("&");
+  const inlineFileUrlWithToken = queryParams ? `${inlineFileUrl}?${queryParams}` : inlineFileUrl;
+  const downloadFileUrl = `${inlineFileUrl}?action=download${queryParams ? `&${queryParams}` : ""}`;
   // 图片走 inline 直链；PDF 走 download + inline 参数（避免 iframe 触发下载）；其余走 download
   const previewFileUrlWithToken = fileType === "image"
     ? inlineFileUrlWithToken

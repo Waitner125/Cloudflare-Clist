@@ -6,6 +6,7 @@ export interface Share {
   shareToken: string;
   expiresAt: string | null;
   createdAt: string;
+  passwordHash: string | null;
 }
 
 interface ShareRow {
@@ -16,6 +17,14 @@ interface ShareRow {
   share_token: string;
   expires_at: string | null;
   created_at: string;
+  password_hash: string | null;
+}
+
+/** SHA-256 → hex，用于密码哈希（Cloudflare Workers Web Crypto） */
+async function hashPassword(password: string): Promise<string> {
+  const data = new TextEncoder().encode(password);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function generateRandomToken(length: number = 16): string {
@@ -37,6 +46,27 @@ function validateShareToken(shareToken: string): void {
   }
 }
 
+function rowToShare(row: ShareRow): Share | null {
+  if (!row) return null;
+  // 过期检查
+  if (row.expires_at) {
+    const expiresAt = new Date(row.expires_at);
+    if (expiresAt < new Date()) {
+      return null;
+    }
+  }
+  return {
+    id: row.id,
+    storageId: row.storage_id,
+    filePath: row.file_path,
+    isDirectory: row.is_directory === 1,
+    shareToken: row.share_token,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    passwordHash: row.password_hash,
+  };
+}
+
 export async function shareTokenExists(db: D1Database, shareToken: string): Promise<boolean> {
   const result = await db
     .prepare(`SELECT id FROM shares WHERE share_token = ? LIMIT 1`)
@@ -52,11 +82,13 @@ export async function createShare(
   filePath: string,
   isDirectory: boolean,
   expiresAt?: string,
-  customShareToken?: string
+  customShareToken?: string,
+  password?: string
 ): Promise<Share> {
   const id = generateShareId();
   const shareToken = customShareToken?.trim() || generateRandomToken();
   const createdAt = new Date().toISOString();
+  const passwordHash = password && password.trim() ? await hashPassword(password.trim()) : null;
 
   validateShareToken(shareToken);
   if (await shareTokenExists(db, shareToken)) {
@@ -64,11 +96,11 @@ export async function createShare(
   }
 
   const query = `
-    INSERT INTO shares (id, storage_id, file_path, is_directory, share_token, expires_at, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO shares (id, storage_id, file_path, is_directory, share_token, expires_at, created_at, password_hash)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
-  await db.prepare(query).bind(id, storageId, filePath, isDirectory ? 1 : 0, shareToken, expiresAt || null, createdAt).run();
+  await db.prepare(query).bind(id, storageId, filePath, isDirectory ? 1 : 0, shareToken, expiresAt || null, createdAt, passwordHash).run();
 
   return {
     id,
@@ -78,53 +110,19 @@ export async function createShare(
     shareToken,
     expiresAt: expiresAt || null,
     createdAt,
+    passwordHash,
   };
 }
 
 export async function getShareByToken(db: D1Database, token: string): Promise<Share | null> {
-  const query = `SELECT * FROM shares WHERE share_token = ?`;
-  const result = await db.prepare(query).bind(token).first<ShareRow>();
-
-  if (!result) {
-    return null;
-  }
-
-  // Check if share has expired
-  if (result.expires_at) {
-    const expiresAt = new Date(result.expires_at);
-    if (expiresAt < new Date()) {
-      return null;
-    }
-  }
-
-  return {
-    id: result.id,
-    storageId: result.storage_id,
-    filePath: result.file_path,
-    isDirectory: result.is_directory === 1,
-    shareToken: result.share_token,
-    expiresAt: result.expires_at,
-    createdAt: result.created_at,
-  };
+  const result = await db.prepare(`SELECT * FROM shares WHERE share_token = ?`).bind(token).first<ShareRow>();
+  return rowToShare(result);
 }
 
 export async function getShareById(db: D1Database, id: string): Promise<Share | null> {
-  const query = `SELECT * FROM shares WHERE id = ?`;
-  const result = await db.prepare(query).bind(id).first<ShareRow>();
-
-  if (!result) {
-    return null;
-  }
-
-  return {
-    id: result.id,
-    storageId: result.storage_id,
-    filePath: result.file_path,
-    isDirectory: result.is_directory === 1,
-    shareToken: result.share_token,
-    expiresAt: result.expires_at,
-    createdAt: result.created_at,
-  };
+  const result = await db.prepare(`SELECT * FROM shares WHERE id = ?`).bind(id).first<ShareRow>();
+  if (!result) return null;
+  return rowToShare(result);
 }
 
 export async function getAllShares(db: D1Database, storageId?: number): Promise<Share[]> {
@@ -140,15 +138,25 @@ export async function getAllShares(db: D1Database, storageId?: number): Promise<
 
   const result = await db.prepare(query).bind(...bindings).all<ShareRow>();
 
-  return (result.results || []).map((row) => ({
-    id: row.id,
-    storageId: row.storage_id,
-    filePath: row.file_path,
-    isDirectory: row.is_directory === 1,
-    shareToken: row.share_token,
-    expiresAt: row.expires_at,
-    createdAt: row.created_at,
-  }));
+  return (result.results || []).map((row) => rowToShare(row)).filter((s): s is Share => s !== null);
+}
+
+/** 校验访问密码：分享未设密码时返回 true；否则比对 SHA-256 */
+export async function verifySharePassword(
+  db: D1Database,
+  token: string,
+  password?: string
+): Promise<boolean> {
+  const row = await db
+    .prepare(`SELECT password_hash FROM shares WHERE share_token = ?`)
+    .bind(token)
+    .first<{ password_hash: string | null }>();
+
+  if (!row) return false;
+  if (!row.password_hash) return true; // 未设密码
+  if (!password) return false;
+  const hash = await hashPassword(password);
+  return hash === row.password_hash;
 }
 
 export async function deleteShare(db: D1Database, id: string): Promise<void> {

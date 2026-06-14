@@ -1,7 +1,7 @@
 import type { Route } from "./+types/api.files.$storageId.$";
 import { getStorageById, initDatabase, updateStorage } from "~/lib/storage";
 import { requireAuth } from "~/lib/auth";
-import { getShareByToken } from "~/lib/shares";
+import { getShareByToken, verifySharePassword } from "~/lib/shares";
 import { S3Client } from "~/lib/s3-client";
 import { WebdevClient } from "~/lib/webdev-client";
 import { OneDriveClient } from "~/lib/onedrive-client";
@@ -129,6 +129,14 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
       const sharePath = share.filePath;
       if (path === sharePath || path.startsWith(sharePath + "/")) {
         shareVerified = true;
+      }
+      // 若分享设了访问密码，必须校验通过
+      if (shareVerified && share.passwordHash) {
+        const password = url.searchParams.get("password") || undefined;
+        const ok = await verifySharePassword(db, shareToken, password);
+        if (!ok) {
+          return Response.json({ error: "需要访问密码或密码错误" }, { status: 403 });
+        }
       }
     }
     if (!shareVerified) {

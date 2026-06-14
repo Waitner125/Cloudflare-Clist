@@ -8,6 +8,7 @@ import {
   getAllShares,
   deleteShare,
   cleanExpiredShares,
+  verifySharePassword,
 } from "~/lib/shares";
 import { getRequestMeta, logAudit } from "~/lib/audit";
 
@@ -43,7 +44,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
       });
 
       return Response.json({
-        share,
+        share: {
+          id: share.id,
+          storageId: share.storageId,
+          filePath: share.filePath,
+          isDirectory: share.isDirectory,
+          shareToken: share.shareToken,
+          expiresAt: share.expiresAt,
+          createdAt: share.createdAt,
+          hasPassword: !!share.passwordHash,
+        },
         storage: {
           id: storage.id,
           name: storage.name,
@@ -79,25 +89,45 @@ export async function action({ request, context }: Route.ActionArgs) {
   const db = context.cloudflare.env.DB;
   await initDatabase(db);
   const meta = getRequestMeta(request);
+  const method = request.method;
 
+  // 解析请求体（POST）
+  let body: Record<string, any> = {};
+  if (method === "POST") {
+    body = (await request.json().catch(() => ({}))) as Record<string, any>;
+  }
+
+  // 公开接口：访客验证分享访问密码（无需登录）
+  if (method === "POST" && body.action === "verify") {
+    const token = body.token as string | undefined;
+    const password = body.password as string | undefined;
+    if (!token) {
+      return Response.json({ error: "token 为必填项" }, { status: 400 });
+    }
+    const share = await getShareByToken(db, token);
+    if (!share) {
+      return Response.json({ error: "分享不存在或已过期" }, { status: 404 });
+    }
+    const ok = await verifySharePassword(db, token, password);
+    return Response.json({ success: ok });
+  }
+
+  // 其余操作需要管理员
   const { isAdmin } = await requireAuth(request, db);
   if (!isAdmin) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const method = request.method;
-
   if (method === "POST") {
     try {
-      const body = (await request.json()) as {
+      const { storageId, filePath, isDirectory, expiresAt, shareToken, password } = body as {
         storageId: number;
         filePath: string;
         isDirectory: boolean;
         expiresAt?: string;
         shareToken?: string;
+        password?: string;
       };
-
-      const { storageId, filePath, isDirectory, expiresAt, shareToken } = body;
 
       if (!storageId || !filePath || isDirectory === undefined) {
         return Response.json(
@@ -111,7 +141,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         return Response.json({ error: "存储不存在" }, { status: 404 });
       }
 
-      const share = await createShare(db, storageId, filePath, isDirectory, expiresAt, shareToken);
+      const share = await createShare(db, storageId, filePath, isDirectory, expiresAt, shareToken, password);
 
       // Generate share URL
       const baseUrl = new URL(request.url).origin;
@@ -124,7 +154,7 @@ export async function action({ request, context }: Route.ActionArgs) {
         userAgent: meta.userAgent,
         storageId,
         path: filePath,
-        detail: { isDirectory, expiresAt: expiresAt || null, customShareToken: Boolean(shareToken?.trim()) },
+        detail: { isDirectory, expiresAt: expiresAt || null, customShareToken: Boolean(shareToken?.trim()), hasPassword: Boolean(password && password.trim()) },
       });
 
       return Response.json({

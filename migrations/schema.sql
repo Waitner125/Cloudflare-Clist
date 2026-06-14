@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS shares (
     is_directory INTEGER DEFAULT 0,
     share_token TEXT NOT NULL UNIQUE,
     expires_at TEXT,
+    password_hash TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (storage_id) REFERENCES storages(id) ON DELETE CASCADE
 );

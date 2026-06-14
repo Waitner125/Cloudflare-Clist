@@ -321,6 +321,7 @@ export async function initDatabase(db: D1Database): Promise<void> {
       is_directory INTEGER DEFAULT 0,
       share_token TEXT NOT NULL UNIQUE,
       expires_at TEXT,
+      password_hash TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (storage_id) REFERENCES storages(id) ON DELETE CASCADE
     )`,
@@ -355,6 +356,13 @@ export async function initDatabase(db: D1Database): Promise<void> {
     if (!names.has("saving_json")) {
       await db.prepare("ALTER TABLE storages ADD COLUMN saving_json TEXT DEFAULT '{}'").run();
     }
+  }
+
+  // 迁移：为旧版 shares 表补 password_hash 列（用于分享访问密码）
+  const shareCols = await db.prepare("PRAGMA table_info(shares)").all<{ name: string }>();
+  const shareNames = new Set((shareCols.results ?? []).map((c) => c.name));
+  if (shareNames.size > 0 && !shareNames.has("password_hash")) {
+    await db.prepare("ALTER TABLE shares ADD COLUMN password_hash TEXT").run();
   }
 }
 

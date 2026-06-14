@@ -1788,6 +1788,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [shareUrl, setShareUrl] = useState("");
   const [customShareToken, setCustomShareToken] = useState("");
   const [shareExpireHours, setShareExpireHours] = useState(0);
+  const [sharePassword, setSharePassword] = useState("");
   const [creatingShare, setCreatingShare] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -1962,6 +1963,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     setShareUrl("");
     setCustomShareToken("");
     setShareExpireHours(0);
+    setSharePassword("");
   };
 
   const handleCreateShare = async () => {
@@ -1985,6 +1987,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           isDirectory: shareTarget.isDirectory,
           expiresAt,
           shareToken: customShareToken.trim() || undefined,
+          password: sharePassword.trim() || undefined,
         }),
       });
 
@@ -2932,6 +2935,19 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                     <option value={168}>1 周</option>
                     <option value={720}>1 月</option>
                   </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-zinc-500 mb-1.5">访问密码（可选）</label>
+                  <input
+                    type="text"
+                    value={sharePassword}
+                    onChange={(e) => setSharePassword(e.target.value)}
+                    placeholder="留空则无需密码"
+                    className="field"
+                  />
+                  <div className="mt-1 text-[11px] text-zinc-400 dark:text-zinc-500">
+                    设置后，访客需输入密码才能访问分享内容
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setShareTarget(null)} className="btn btn-outline flex-1 py-2">取消</button>

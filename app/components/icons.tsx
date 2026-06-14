@@ -114,6 +114,9 @@ export const Play = (p: IconProps) => (
 export const Pause = (p: IconProps) => (
   <Svg {...p}><rect x="14" y="4" width="4" height="16" rx="1" /><rect x="6" y="4" width="4" height="16" rx="1" /></Svg>
 );
+export const Lock = (p: IconProps) => (
+  <Svg {...p}><rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></Svg>
+);
 export const BarChart3 = (p: IconProps) => (
   <Svg {...p}><path d="M3 3v18h18" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></Svg>
 );

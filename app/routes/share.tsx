@@ -13,7 +13,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 import { useState, useEffect } from "react";
 import { FilePreview } from "~/components/FilePreview";
-import { Folder, Download, Link as LinkIcon, Clock, AlertCircle, ChevronRight, Play, fileTypeIcon } from "~/components/icons";
+import { Folder, Download, Link as LinkIcon, Clock, AlertCircle, ChevronRight, Play, Lock, fileTypeIcon } from "~/components/icons";
 import { getFileType } from "~/lib/file-utils";
 
 interface S3Object {
@@ -32,6 +32,7 @@ interface Share {
   shareToken: string;
   expiresAt: string | null;
   createdAt: string;
+  hasPassword: boolean;
 }
 
 interface StorageInfo {
@@ -67,6 +68,10 @@ export default function Share({ loaderData }: Route.ComponentProps) {
   const [previewFile, setPreviewFile] = useState<S3Object | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [accessPassword, setAccessPassword] = useState("");
+  const [passwordVerified, setPasswordVerified] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     if (!token) {
@@ -97,10 +102,10 @@ export default function Share({ loaderData }: Route.ComponentProps) {
   }, [token]);
 
   useEffect(() => {
-    if (share && storage) {
+    if (share && storage && (!share.hasPassword || passwordVerified)) {
       loadFiles();
     }
-  }, [share, storage, path]);
+  }, [share, storage, path, passwordVerified]);
 
   const loadFiles = async () => {
     if (!share || !storage || !token) return;
@@ -128,7 +133,7 @@ export default function Share({ loaderData }: Route.ComponentProps) {
       const fullPath = path ? `${basePath}/${path}` : basePath;
 
       const res = await fetch(
-        `/api/files/${storage.id}/${fullPath}?action=list&token=${token}`
+        `/api/files/${storage.id}/${fullPath}?action=list&token=${token}${accessPassword ? `&password=${encodeURIComponent(accessPassword)}` : ""}`
       );
 
       if (res.ok) {
@@ -153,9 +158,31 @@ export default function Share({ loaderData }: Route.ComponentProps) {
 
   const downloadFile = (key: string) => {
     window.open(
-      `/api/files/${storage!.id}/${key}?action=download&token=${token}`,
+      `/api/files/${storage!.id}/${key}?action=download&token=${token}${accessPassword ? `&password=${encodeURIComponent(accessPassword)}` : ""}`,
       "_blank"
     );
+  };
+
+  const verifyPassword = async () => {
+    setPasswordError("");
+    setVerifying(true);
+    try {
+      const res = await fetch("/api/shares", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", token, password: accessPassword }),
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string };
+      if (res.ok && data.success) {
+        setPasswordVerified(true);
+      } else {
+        setPasswordError(data.error || "密码错误，请重试");
+      }
+    } catch {
+      setPasswordError("网络错误");
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const canPreviewImage = (obj: S3Object) => !obj.isDirectory && getFileType(obj.name) === "image";
@@ -175,6 +202,36 @@ export default function Share({ loaderData }: Route.ComponentProps) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-100 dark:bg-zinc-950">
         <div className="text-zinc-500 dark:text-zinc-400 text-sm">加载中…</div>
+      </div>
+    );
+  }
+
+  // 密码保护：未验证前显示密码门
+  if (share.hasPassword && !passwordVerified) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-zinc-100 dark:bg-zinc-950 p-4">
+        <div className="w-full max-w-sm rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl p-6">
+          <div className="flex flex-col items-center text-center gap-2 mb-5">
+            <span className="grid h-11 w-11 place-items-center rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-600/20">
+              <Lock className="h-5 w-5" />
+            </span>
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">需要访问密码</h2>
+            <p className="text-xs text-zinc-500">该分享受密码保护，请输入密码继续访问</p>
+          </div>
+          <input
+            type="password"
+            value={accessPassword}
+            onChange={(e) => setAccessPassword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && !verifying) verifyPassword(); }}
+            placeholder="输入访问密码"
+            className="field"
+            autoFocus
+          />
+          {passwordError && <div className="mt-2 text-xs text-red-500">{passwordError}</div>}
+          <button onClick={verifyPassword} disabled={verifying || !accessPassword} className="btn btn-primary w-full py-2 mt-3">
+            {verifying ? "验证中…" : "验证"}
+          </button>
+        </div>
       </div>
     );
   }
@@ -327,6 +384,7 @@ export default function Share({ loaderData }: Route.ComponentProps) {
           fileKey={previewFile.key}
           fileName={previewFile.name}
           shareToken={token}
+          password={accessPassword}
           onClose={() => setPreviewFile(null)}
         />
       )}
