@@ -2875,6 +2875,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           onNext={handleNextPreview}
           hasPrev={currentPreviewIndex > 0}
           hasNext={currentPreviewIndex < previewableFiles.length - 1}
+          canEdit={canUpload}
         />
       )}
 
