@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { getFileType, formatDuration, getCodeLanguage, type FileType } from "~/lib/file-utils";
+import { getFileType, formatDuration, getCodeLanguage, getMimeType, type FileType } from "~/lib/file-utils";
 import hljs from "highlight.js";
 import { marked } from "marked";
-import { X, Download, Play, Pause, RefreshCw, AlertCircle } from "~/components/icons";
+import { X, Download, Play, Pause, RefreshCw, AlertCircle, Pencil, Check } from "~/components/icons";
 
 interface FilePreviewProps {
   storageId: number;
@@ -15,6 +15,7 @@ interface FilePreviewProps {
   onNext?: () => void;
   hasPrev?: boolean;
   hasNext?: boolean;
+  canEdit?: boolean;
 }
 
 export function FilePreview({
@@ -28,6 +29,7 @@ export function FilePreview({
   onNext,
   hasPrev,
   hasNext,
+  canEdit,
 }: FilePreviewProps) {
   const fileType = getFileType(fileName);
   const inlineFileUrl = `/api/files/${storageId}/${fileKey}`;
@@ -43,6 +45,8 @@ export function FilePreview({
     : fileType === "pdf"
     ? `${downloadFileUrl}&inline=1`
     : downloadFileUrl;
+  // 编辑保存用：不带 action 的纯路径 url（PUT 覆盖写入）
+  const uploadUrl = inlineFileUrlWithToken;
 
   const getAbsoluteUrl = (url: string) => new URL(url, window.location.origin).href;
   const copyImageLink = () => {
@@ -153,13 +157,13 @@ export function FilePreview({
           {fileType === "audio" && <AudioPlayer url={previewFileUrlWithToken} fileName={fileName} />}
           {fileType === "image" && <ImageViewer url={previewFileUrlWithToken} fileName={fileName} />}
           {fileType === "text" && (
-            <TextViewer url={previewFileUrlWithToken} fileName={fileName} />
+            <TextViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} />
           )}
           {fileType === "code" && (
-            <CodeViewer url={previewFileUrlWithToken} fileName={fileName} />
+            <CodeViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} />
           )}
           {fileType === "markdown" && (
-            <MarkdownViewer url={previewFileUrlWithToken} fileName={fileName} />
+            <MarkdownViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} />
           )}
           {fileType === "pdf" && <PDFViewer url={previewFileUrlWithToken} />}
           {fileType === "docx" && <DocxViewer url={previewFileUrlWithToken} />}
@@ -182,6 +186,101 @@ export function FilePreview({
       </div>
     </div>
   );
+}
+
+// 编辑文本文件后保存（PUT 覆盖原文件）
+async function saveTextFile(uploadUrl: string, content: string, mime: string): Promise<void> {
+  // 文本编辑统一兜底为 text/plain，并补 charset=utf-8，避免中文编码与误判下载
+  let finalMime = mime && mime !== "application/octet-stream" ? mime : "text/plain";
+  if (!/charset=/.test(finalMime) && /^(text\/|application\/(json|xml))/.test(finalMime)) {
+    finalMime += "; charset=utf-8";
+  }
+  const res = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": finalMime },
+    body: content,
+  });
+  if (!res.ok) {
+    let msg = `保存失败 (${res.status})`;
+    try {
+      const data: any = await res.json();
+      if (data?.error) msg = data.error;
+    } catch {}
+    throw new Error(msg);
+  }
+}
+
+// 可编辑文本文件：编辑状态 + 工具条（编辑 / 保存 / 取消）
+function useFileEditor(opts: {
+  enabled: boolean;
+  content: string;
+  uploadUrl?: string;
+  mime: string;
+  onSaved?: () => void;
+}) {
+  const { enabled, content, uploadUrl, mime, onSaved } = opts;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  const start = () => {
+    setDraft(content);
+    setEditing(true);
+    setSaveError("");
+  };
+  const cancel = () => {
+    setEditing(false);
+    setSaveError("");
+  };
+  const save = async () => {
+    if (!uploadUrl) return;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await saveTextFile(uploadUrl, draft, mime);
+      setEditing(false);
+      onSaved?.();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const controls = enabled ? (
+    <div className="flex items-center gap-1.5">
+      {saveError && <span className="text-red-400 text-xs mr-1">{saveError}</span>}
+      {!editing && (
+        <button
+          onClick={start}
+          className="inline-flex items-center gap-1 text-xs text-zinc-300 hover:text-white px-2 py-1 border border-zinc-700 hover:border-zinc-500 rounded transition"
+        >
+          <Pencil className="h-3.5 w-3.5" /> 编辑
+        </button>
+      )}
+      {editing && (
+        <>
+          <button
+            onClick={save}
+            disabled={saving}
+            className="inline-flex items-center gap-1 text-xs text-emerald-300 hover:text-emerald-200 px-2 py-1 border border-emerald-700/60 hover:border-emerald-500 rounded transition disabled:opacity-50"
+          >
+            <Check className="h-3.5 w-3.5" /> {saving ? "保存中" : "保存"}
+          </button>
+          <button
+            onClick={cancel}
+            disabled={saving}
+            className="text-xs text-zinc-400 hover:text-white px-2 py-1 border border-zinc-700 hover:border-zinc-500 rounded transition disabled:opacity-50"
+          >
+            取消
+          </button>
+        </>
+      )}
+    </div>
+  ) : null;
+
+  return { editing, draft, setDraft, controls };
 }
 
 // Video Player Component
@@ -672,10 +771,11 @@ function ImageViewer({ url, fileName }: { url: string; fileName: string }) {
 }
 
 // Text Viewer Component (plain text without syntax highlighting)
-function TextViewer({ url, fileName }: { url: string; fileName: string }) {
+function TextViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileName: string; canEdit?: boolean; uploadUrl?: string }) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     const fetchContent = async () => {
@@ -693,7 +793,15 @@ function TextViewer({ url, fileName }: { url: string; fileName: string }) {
     };
 
     fetchContent();
-  }, [url]);
+  }, [url, reloadKey]);
+
+  const editor = useFileEditor({
+    enabled: !!canEdit,
+    content,
+    uploadUrl,
+    mime: getMimeType(fileName),
+    onSaved: () => setReloadKey((k) => k + 1),
+  });
 
   if (loading) {
     return (
@@ -712,29 +820,42 @@ function TextViewer({ url, fileName }: { url: string; fileName: string }) {
   }
 
   return (
-    <div className="w-full max-w-5xl max-h-[calc(100vh-150px)] bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
+    <div className="w-full max-w-5xl max-h-[calc(100vh-150px)] bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700">
         <span className="text-zinc-400 text-xs font-mono">plaintext</span>
-        <span className="text-zinc-500 text-xs font-mono">{content.split('\n').length} 行</span>
+        <div className="flex items-center gap-3">
+          {editor.controls}
+          <span className="text-zinc-500 text-xs font-mono">{content.split('\n').length} 行</span>
+        </div>
       </div>
 
       {/* Content */}
-      <div className="overflow-auto max-h-[calc(100vh-200px)]">
-        <pre className="p-4 text-sm font-mono text-zinc-300 whitespace-pre-wrap break-words">
-          {content}
-        </pre>
+      <div className="overflow-auto max-h-[calc(100vh-200px)] flex-1">
+        {editor.editing ? (
+          <textarea
+            value={editor.draft}
+            onChange={(e) => editor.setDraft(e.target.value)}
+            spellCheck={false}
+            className="w-full h-full min-h-[calc(100vh-200px)] p-4 text-sm font-mono text-zinc-100 bg-zinc-900 outline-none resize-none"
+          />
+        ) : (
+          <pre className="p-4 text-sm font-mono text-zinc-300 whitespace-pre-wrap break-words">
+            {content}
+          </pre>
+        )}
       </div>
     </div>
   );
 }
 
 // Code Viewer Component (with syntax highlighting)
-function CodeViewer({ url, fileName }: { url: string; fileName: string }) {
+function CodeViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileName: string; canEdit?: boolean; uploadUrl?: string }) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [highlightedCode, setHighlightedCode] = useState<string>("");
+  const [reloadKey, setReloadKey] = useState(0);
   const language = getCodeLanguage(fileName);
 
   useEffect(() => {
@@ -763,7 +884,15 @@ function CodeViewer({ url, fileName }: { url: string; fileName: string }) {
     };
 
     fetchContent();
-  }, [url, language]);
+  }, [url, language, reloadKey]);
+
+  const editor = useFileEditor({
+    enabled: !!canEdit,
+    content,
+    uploadUrl,
+    mime: getMimeType(fileName),
+    onSaved: () => setReloadKey((k) => k + 1),
+  });
 
   if (loading) {
     return (
@@ -782,21 +911,33 @@ function CodeViewer({ url, fileName }: { url: string; fileName: string }) {
   }
 
   return (
-    <div className="w-full max-w-5xl max-h-[calc(100vh-150px)] bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
+    <div className="w-full max-w-5xl max-h-[calc(100vh-150px)] bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700">
         <span className="text-zinc-400 text-xs font-mono">{language}</span>
-        <span className="text-zinc-500 text-xs font-mono">{content.split('\n').length} 行</span>
+        <div className="flex items-center gap-3">
+          {editor.controls}
+          <span className="text-zinc-500 text-xs font-mono">{content.split('\n').length} 行</span>
+        </div>
       </div>
 
       {/* Content with syntax highlighting */}
-      <div className="overflow-auto max-h-[calc(100vh-200px)]">
-        <pre className="p-4 text-sm font-mono leading-relaxed">
-          <code
-            className={`hljs language-${language}`}
-            dangerouslySetInnerHTML={{ __html: highlightedCode }}
+      <div className="overflow-auto max-h-[calc(100vh-200px)] flex-1">
+        {editor.editing ? (
+          <textarea
+            value={editor.draft}
+            onChange={(e) => editor.setDraft(e.target.value)}
+            spellCheck={false}
+            className="w-full h-full min-h-[calc(100vh-200px)] p-4 text-sm font-mono text-zinc-100 bg-zinc-900 outline-none resize-none"
           />
-        </pre>
+        ) : (
+          <pre className="p-4 text-sm font-mono leading-relaxed">
+            <code
+              className={`hljs language-${language}`}
+              dangerouslySetInnerHTML={{ __html: highlightedCode }}
+            />
+          </pre>
+        )}
       </div>
 
       {/* Highlight.js dark theme styles */}
@@ -881,11 +1022,12 @@ function CodeViewer({ url, fileName }: { url: string; fileName: string }) {
 }
 
 // Markdown Viewer Component
-function MarkdownViewer({ url, fileName }: { url: string; fileName: string }) {
+function MarkdownViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileName: string; canEdit?: boolean; uploadUrl?: string }) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [renderedHtml, setRenderedHtml] = useState<string>("");
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     const fetchContent = async () => {
@@ -928,7 +1070,15 @@ function MarkdownViewer({ url, fileName }: { url: string; fileName: string }) {
     };
 
     fetchContent();
-  }, [url]);
+  }, [url, reloadKey]);
+
+  const editor = useFileEditor({
+    enabled: !!canEdit,
+    content,
+    uploadUrl,
+    mime: getMimeType(fileName),
+    onSaved: () => setReloadKey((k) => k + 1),
+  });
 
   if (loading) {
     return (
@@ -947,20 +1097,32 @@ function MarkdownViewer({ url, fileName }: { url: string; fileName: string }) {
   }
 
   return (
-    <div className="w-full max-w-4xl max-h-[calc(100vh-150px)] bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden">
+    <div className="w-full max-w-4xl max-h-[calc(100vh-150px)] bg-zinc-900 border border-zinc-700 rounded-lg overflow-hidden flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-zinc-800 border-b border-zinc-700">
         <span className="text-zinc-400 text-xs font-mono">Markdown</span>
-        <span className="text-zinc-500 text-xs font-mono">{fileName}</span>
+        <div className="flex items-center gap-3">
+          {editor.controls}
+          <span className="text-zinc-500 text-xs font-mono">{fileName}</span>
+        </div>
       </div>
 
-      {/* Rendered Markdown Content */}
-      <div className="overflow-auto max-h-[calc(100vh-200px)] p-6">
-        <div
-          className="markdown-body"
-          dangerouslySetInnerHTML={{ __html: renderedHtml }}
+      {/* Rendered Markdown Content / Editor */}
+      {editor.editing ? (
+        <textarea
+          value={editor.draft}
+          onChange={(e) => editor.setDraft(e.target.value)}
+          spellCheck={false}
+          className="w-full min-h-[calc(100vh-200px)] max-h-[calc(100vh-200px)] p-4 text-sm font-mono text-zinc-100 bg-zinc-900 outline-none resize-none flex-1"
         />
-      </div>
+      ) : (
+        <div className="overflow-auto max-h-[calc(100vh-200px)] p-6">
+          <div
+            className="markdown-body"
+            dangerouslySetInnerHTML={{ __html: renderedHtml }}
+          />
+        </div>
+      )}
 
       {/* Markdown styles */}
       <style>{`

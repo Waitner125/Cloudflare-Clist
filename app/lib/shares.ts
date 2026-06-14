@@ -116,6 +116,7 @@ export async function createShare(
 
 export async function getShareByToken(db: D1Database, token: string): Promise<Share | null> {
   const result = await db.prepare(`SELECT * FROM shares WHERE share_token = ?`).bind(token).first<ShareRow>();
+  if (!result) return null;
   return rowToShare(result);
 }
 
