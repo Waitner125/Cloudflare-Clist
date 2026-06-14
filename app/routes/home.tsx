@@ -9,7 +9,7 @@ import {
   X, Plus, Search, Sun, Moon, SlidersHorizontal, LogIn, LogOut, ShieldCheck, Cloud,
   ChevronRight, ArrowLeft, ArrowRightLeft, RefreshCw, PanelLeft,
   FolderPlus, Upload, Download, Copy, Share2, Pencil, Trash2, Play, BarChart3, FileText,
-  Folder, AlertCircle, Github, fileTypeIcon, Globe, LayoutGrid, List,
+  Folder, AlertCircle, Github, fileTypeIcon, Globe, LayoutGrid, List, Star, Calculator,
 } from "~/components/icons";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -1783,6 +1783,12 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [globalResults, setGlobalResults] = useState<S3Object[]>([]);
   const [globalLoading, setGlobalLoading] = useState(false);
   const [viewMode, setViewMode] = useState<"list" | "gallery">("list");
+  const [favorites, setFavorites] = useState<Array<{ storageId: number; key: string; name: string; isDirectory: boolean }>>(() => {
+    try { return JSON.parse(localStorage.getItem("clist-favorites") || "[]"); } catch { return []; }
+  });
+  const [favOpen, setFavOpen] = useState(false);
+  const [calcSizeKey, setCalcSizeKey] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: S3Object } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [renameTarget, setRenameTarget] = useState<S3Object | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -2178,6 +2184,47 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     files.forEach((f, i) => {
       setTimeout(() => window.open(`/api/files/${storage.id}/${f.key}?action=download`, "_blank"), i * 400);
     });
+  };
+
+  const isFavorite = (key: string) => favorites.some((f) => f.storageId === storage.id && f.key === key);
+
+  const toggleFavorite = (obj: S3Object) => {
+    setFavorites((prev) => {
+      const exists = prev.some((f) => f.storageId === storage.id && f.key === obj.key);
+      const next = exists
+        ? prev.filter((f) => !(f.storageId === storage.id && f.key === obj.key))
+        : [...prev, { storageId: storage.id, key: obj.key, name: obj.name, isDirectory: obj.isDirectory }];
+      try { localStorage.setItem("clist-favorites", JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
+
+  // 递归统计文件夹大小
+  const calcFolderSize = async (key: string) => {
+    setCalcSizeKey(key);
+    let total = 0, count = 0, dirs = 0;
+    const queue = [key];
+    const visited = new Set<string>();
+    try {
+      while (queue.length > 0 && dirs < 2000) {
+        const prefix = queue.shift()!;
+        if (visited.has(prefix)) continue;
+        visited.add(prefix);
+        dirs++;
+        const res = await fetch(`/api/files/${storage.id}/${prefix}?action=list`);
+        if (!res.ok) continue;
+        const data = (await res.json()) as { objects?: S3Object[] };
+        for (const obj of data.objects || []) {
+          if (obj.isDirectory) queue.push(obj.key);
+          else { total += obj.size; count++; }
+        }
+      }
+      alert(`${count} 个文件 · ${dirs} 个目录\n总大小：${formatBytes(total)}`);
+    } catch {
+      alert("统计失败");
+    } finally {
+      setCalcSizeKey(null);
+    }
   };
 
   // 全局搜索：从根 BFS 递归列目录，匹配文件名（限流防大存储卡死）
@@ -2718,6 +2765,39 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           >
             {viewMode === "list" ? <LayoutGrid /> : <List />}
           </button>
+          <div className="relative">
+            <button
+              onClick={() => setFavOpen((o) => !o)}
+              className={`icon-btn h-8 w-8 ${favOpen ? "text-yellow-500 bg-yellow-500/10" : ""}`}
+              title="收藏夹"
+              aria-label="收藏夹"
+            >
+              <Star />
+            </button>
+            {favOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setFavOpen(false)} />
+                <div className="absolute right-0 top-9 z-50 min-w-[220px] max-h-80 overflow-auto bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg py-1">
+                  {favorites.filter((f) => f.storageId === storage.id).length === 0 ? (
+                    <div className="px-3 py-4 text-center text-xs text-zinc-400">暂无收藏（右键或操作列 ☆ 收藏常用目录/文件）</div>
+                  ) : favorites.filter((f) => f.storageId === storage.id).map((f) => {
+                    const parent = f.key.includes("/") ? f.key.slice(0, f.key.lastIndexOf("/")) : "";
+                    return (
+                      <div key={f.key} className="flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700">
+                        <button onClick={() => { setFavOpen(false); navigateTo(f.isDirectory ? f.key : parent); }} className="flex items-center gap-2 flex-1 min-w-0 text-left">
+                          {f.isDirectory ? <Folder className="h-4 w-4 text-blue-500 shrink-0" /> : <span className="text-zinc-400 shrink-0">{(() => { const Ic = fileTypeIcon(getFileType(f.name)); return <Ic className="h-4 w-4" />; })()}</span>}
+                          <span className="truncate text-sm text-zinc-700 dark:text-zinc-200">{f.name}</span>
+                        </button>
+                        <button onClick={() => toggleFavorite({ key: f.key, name: f.name, isDirectory: f.isDirectory } as S3Object)} className="text-zinc-400 hover:text-red-500 shrink-0" title="移除收藏" aria-label="移除收藏">
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </div>
           {/* Batch actions */}
           {isAdmin && selectedKeys.size > 0 && (
             <>
@@ -3058,6 +3138,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                   className={`border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/40 ${
                     selectedKeys.has(obj.key) ? "bg-blue-50 dark:bg-blue-900/20" : ""
                   }`}
+                  onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, obj }); }}
                 >
                   {isAdmin && (
                     <td className="py-2 px-3">
@@ -3101,14 +3182,20 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                   </td>
                   <td className="py-1.5 px-3 text-right">
                     {obj.isDirectory ? (
-                      isAdmin && (
-                        <div className="flex items-center justify-end gap-0.5">
-                          <button onClick={() => startShare(obj)} className="icon-btn h-7 w-7" title="分享" aria-label="分享"><Share2 /></button>
-                          <button onClick={() => startRename(obj)} className="icon-btn h-7 w-7" title="重命名" aria-label="重命名"><Pencil /></button>
-                          <button onClick={() => startMove(obj)} className="icon-btn h-7 w-7" title="移动" aria-label="移动"><ArrowRightLeft /></button>
-                          <button onClick={() => deleteFolder(obj.key, obj.name)} className="icon-btn h-7 w-7 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10" title="删除文件夹" aria-label="删除文件夹"><Trash2 /></button>
-                        </div>
-                      )
+                      <div className="flex items-center justify-end gap-0.5">
+                        <button onClick={() => toggleFavorite(obj)} className={`icon-btn h-7 w-7 ${isFavorite(obj.key) ? "text-yellow-500" : ""}`} title={isFavorite(obj.key) ? "取消收藏" : "收藏"} aria-label="收藏"><Star /></button>
+                        {canDownload && (
+                          <button onClick={() => calcFolderSize(obj.key)} disabled={calcSizeKey === obj.key} className="icon-btn h-7 w-7" title="统计大小" aria-label="统计大小"><Calculator /></button>
+                        )}
+                        {isAdmin && (
+                          <>
+                            <button onClick={() => startShare(obj)} className="icon-btn h-7 w-7" title="分享" aria-label="分享"><Share2 /></button>
+                            <button onClick={() => startRename(obj)} className="icon-btn h-7 w-7" title="重命名" aria-label="重命名"><Pencil /></button>
+                            <button onClick={() => startMove(obj)} className="icon-btn h-7 w-7" title="移动" aria-label="移动"><ArrowRightLeft /></button>
+                            <button onClick={() => deleteFolder(obj.key, obj.name)} className="icon-btn h-7 w-7 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-500/10" title="删除文件夹" aria-label="删除文件夹"><Trash2 /></button>
+                          </>
+                        )}
+                      </div>
                     ) : (
                       <div className="flex items-center justify-end gap-0.5">
                         {canDownload && isPreviewable(obj.name) && (
@@ -3117,6 +3204,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                         {canDownload && (
                           <button onClick={() => downloadFile(obj.key)} className="icon-btn h-7 w-7" title="下载" aria-label="下载"><Download /></button>
                         )}
+                        <button onClick={() => toggleFavorite(obj)} className={`icon-btn h-7 w-7 ${isFavorite(obj.key) ? "text-yellow-500" : ""}`} title={isFavorite(obj.key) ? "取消收藏" : "收藏"} aria-label="收藏"><Star /></button>
                         {isAdmin && (
                           <>
                             <button onClick={() => startShare(obj)} className="icon-btn h-7 w-7" title="分享" aria-label="分享"><Share2 /></button>
@@ -3315,6 +3403,50 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           </div>
         </Modal>
       )}
+
+      {/* Context Menu（右键） */}
+      {contextMenu && (() => {
+        const obj = contextMenu.obj;
+        const x = contextMenu.x;
+        const y = contextMenu.y;
+        const close = () => setContextMenu(null);
+        const Item = ({ icon, label, onClick, danger }: { icon: React.ReactNode; label: string; onClick: () => void; danger?: boolean }) => (
+          <button onClick={onClick} className={`flex items-center gap-2 w-full px-3 py-1.5 text-left hover:bg-zinc-100 dark:hover:bg-zinc-700 ${danger ? "text-red-600 dark:text-red-400" : "text-zinc-700 dark:text-zinc-200"}`}>
+            {icon}<span>{label}</span>
+          </button>
+        );
+        return (
+          <>
+            <div className="fixed inset-0 z-40" onClick={close} onContextMenu={(e) => { e.preventDefault(); close(); }} />
+            <div
+              className="fixed z-50 min-w-[160px] bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg py-1"
+              style={{ left: Math.min(x, window.innerWidth - 180), top: Math.min(y, window.innerHeight - 320) }}
+            >
+              {obj.isDirectory ? (
+                <Item icon={<Folder className="h-4 w-4 text-blue-500" />} label="打开" onClick={() => { navigateTo(obj.key); close(); }} />
+              ) : isPreviewable(obj.name) ? (
+                <Item icon={<Play className="h-4 w-4" />} label="预览" onClick={() => { handlePreview(obj); close(); }} />
+              ) : null}
+              {!obj.isDirectory && (
+                <Item icon={<Download className="h-4 w-4" />} label="下载" onClick={() => { downloadFile(obj.key); close(); }} />
+              )}
+              {obj.isDirectory && canDownload && (
+                <Item icon={<Calculator className="h-4 w-4" />} label={calcSizeKey === obj.key ? "统计中…" : "统计大小"} onClick={() => { calcFolderSize(obj.key); close(); }} />
+              )}
+              <Item icon={<Star className={`h-4 w-4 ${isFavorite(obj.key) ? "text-yellow-500" : ""}`} />} label={isFavorite(obj.key) ? "取消收藏" : "收藏"} onClick={() => { toggleFavorite(obj); close(); }} />
+              {isAdmin && (
+                <>
+                  <div className="my-1 border-t border-zinc-200 dark:border-zinc-700" />
+                  <Item icon={<Share2 className="h-4 w-4" />} label="分享" onClick={() => { startShare(obj); close(); }} />
+                  <Item icon={<Pencil className="h-4 w-4" />} label="重命名" onClick={() => { startRename(obj); close(); }} />
+                  <Item icon={<ArrowRightLeft className="h-4 w-4" />} label="移动" onClick={() => { startMove(obj); close(); }} />
+                  <Item icon={<Trash2 className="h-4 w-4" />} label="删除" danger onClick={() => { obj.isDirectory ? deleteFolder(obj.key, obj.name) : deleteFile(obj.key); close(); }} />
+                </>
+              )}
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }

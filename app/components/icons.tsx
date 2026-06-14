@@ -97,6 +97,12 @@ export const LayoutGrid = (p: IconProps) => (
 export const List = (p: IconProps) => (
   <Svg {...p}><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" /></Svg>
 );
+export const Star = (p: IconProps) => (
+  <Svg {...p}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></Svg>
+);
+export const Calculator = (p: IconProps) => (
+  <Svg {...p}><rect width="16" height="20" x="4" y="2" rx="2" /><line x1="8" x2="16" y1="6" y2="6" /><line x1="16" x2="16" y1="14" y2="18" /><path d="M16 10h.01" /><path d="M12 10h.01" /><path d="M8 10h.01" /><path d="M12 14h.01" /><path d="M8 14h.01" /><path d="M12 18h.01" /><path d="M8 18h.01" /></Svg>
+);
 
 /* ---------- 文件操作 ---------- */
 export const FolderPlus = (p: IconProps) => (
