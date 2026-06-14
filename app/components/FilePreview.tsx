@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { getFileType, formatDuration, getCodeLanguage, type FileType } from "~/lib/file-utils";
 import hljs from "highlight.js";
 import { marked } from "marked";
-import { X, Download, Play, Pause } from "~/components/icons";
+import { X, Download, Play, Pause, RefreshCw, AlertCircle } from "~/components/icons";
 
 interface FilePreviewProps {
   storageId: number;
@@ -162,6 +162,10 @@ export function FilePreview({
             <MarkdownViewer url={previewFileUrlWithToken} fileName={fileName} />
           )}
           {fileType === "pdf" && <PDFViewer url={previewFileUrlWithToken} />}
+          {fileType === "docx" && <DocxViewer url={previewFileUrlWithToken} />}
+          {fileType === "xlsx" && <XlsxViewer url={previewFileUrlWithToken} />}
+          {fileType === "pptx" && <PptxViewer url={previewFileUrlWithToken} />}
+          {fileType === "archive" && <ArchiveViewer url={previewFileUrlWithToken} fileName={fileName} />}
           {fileType === "unknown" && (
             <div className="text-zinc-400 font-mono text-center">
               <p className="text-lg mb-2">无法预览此文件类型</p>
@@ -1150,4 +1154,244 @@ function PDFViewer({ url }: { url: string }) {
       />
     </div>
   );
+}
+
+function formatBytesPreview(bytes: number): string {
+  if (!bytes) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+}
+
+function PreviewLoading() {
+  return (
+    <div className="flex items-center justify-center gap-2 text-zinc-400 text-sm">
+      <RefreshCw className="h-4 w-4 animate-spin" />
+      正在解析...
+    </div>
+  );
+}
+
+function PreviewError({ msg }: { msg: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 text-red-400 text-sm text-center max-w-md">
+      <AlertCircle className="h-8 w-8" />
+      <p>无法预览此文件</p>
+      <p className="text-xs text-zinc-500 break-all">{msg}</p>
+      <p className="text-xs text-zinc-500">请尝试下载后用本地软件打开</p>
+    </div>
+  );
+}
+
+// Docx Viewer (mammoth → HTML)
+function DocxViewer({ url }: { url: string }) {
+  const [html, setHtml] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("加载失败");
+        const arrayBuffer = await res.arrayBuffer();
+        const mammoth = (await import("mammoth")).default;
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        if (!cancelled) setHtml(result.value || "<p style='color:#999'>（空文档）</p>");
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "解析 docx 失败");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+
+  if (loading) return <PreviewLoading />;
+  if (error) return <PreviewError msg={error} />;
+  return (
+    <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-auto bg-white text-zinc-800 rounded-lg p-8 sm:p-12 shadow-lg">
+      <div className="docx-content" dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
+}
+
+// Xlsx Viewer (SheetJS)
+function XlsxViewer({ url }: { url: string }) {
+  const [sheets, setSheets] = useState<{ name: string; rows: unknown[][] }[]>([]);
+  const [activeSheet, setActiveSheet] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("加载失败");
+        const arrayBuffer = await res.arrayBuffer();
+        const XLSX = await import("xlsx");
+        const wb = XLSX.read(arrayBuffer, { type: "array" });
+        const data = wb.SheetNames.map((name) => {
+          const ws = wb.Sheets[name];
+          const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, blankrows: false, defval: "" });
+          return { name, rows };
+        });
+        if (!cancelled) { setSheets(data); setActiveSheet(0); }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "解析表格失败");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+
+  if (loading) return <PreviewLoading />;
+  if (error) return <PreviewError msg={error} />;
+  const sheet = sheets[activeSheet];
+  return (
+    <div className="w-full max-w-6xl max-h-[calc(100vh-120px)] overflow-hidden bg-white text-zinc-800 rounded-lg shadow-lg flex flex-col">
+      {sheets.length > 1 && (
+        <div className="flex gap-1 border-b border-zinc-200 p-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {sheets.map((s, i) => (
+            <button key={i} onClick={() => setActiveSheet(i)} className={`px-3 py-1 text-xs rounded whitespace-nowrap ${i === activeSheet ? "bg-blue-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}>{s.name}</button>
+          ))}
+        </div>
+      )}
+      <div className="overflow-auto">
+        <table className="border-collapse text-xs">
+          <tbody>
+            {sheet?.rows.map((row, ri) => (
+              <tr key={ri}>
+                <td className="border border-zinc-200 px-2 py-1 bg-zinc-50 text-zinc-400 sticky left-0">{ri + 1}</td>
+                {(row as unknown[]).map((cell, ci) => (
+                  <td key={ci} className="border border-zinc-200 px-2 py-1 whitespace-nowrap">{String(cell ?? "")}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// Pptx Viewer (jszip 提取每页文本)
+function PptxViewer({ url }: { url: string }) {
+  const [slides, setSlides] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("加载失败");
+        const ab = await res.arrayBuffer();
+        const JSZip = (await import("jszip")).default;
+        const zip = await JSZip.loadAsync(ab);
+        const slideFiles = Object.keys(zip.files)
+          .filter((n) => /^ppt\/slides\/slide\d+\.xml$/.test(n))
+          .sort((a, b) => {
+            const na = parseInt(a.match(/slide(\d+)/)?.[1] || "0", 10);
+            const nb = parseInt(b.match(/slide(\d+)/)?.[1] || "0", 10);
+            return na - nb;
+          });
+        const out: string[] = [];
+        for (const f of slideFiles) {
+          const xml = await zip.files[f].async("string");
+          const texts = [...xml.matchAll(/<a:t>([^<]*)<\/a:t>/g)].map((m) => decodeXmlEntities(m[1]));
+          out.push(texts.join("\n").trim());
+        }
+        if (!cancelled) setSlides(out);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "解析 pptx 失败");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+
+  if (loading) return <PreviewLoading />;
+  if (error) return <PreviewError msg={error} />;
+  return (
+    <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-auto bg-white text-zinc-800 rounded-lg shadow-lg p-6 space-y-4">
+      <p className="text-xs text-zinc-400">提示：仅提取幻灯片文本，不还原图文版式</p>
+      {slides.length === 0 && <p className="text-zinc-400 text-sm">（无可读取文本，可能是纯图片 PPT）</p>}
+      {slides.map((s, i) => (
+        <div key={i} className="border border-zinc-200 rounded-lg p-4">
+          <div className="text-xs text-zinc-400 mb-2">第 {i + 1} 页</div>
+          <pre className="whitespace-pre-wrap text-sm font-sans">{s || "（空白页）"}</pre>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Archive Viewer (jszip，支持 zip；rar/7z/tar 会失败提示)
+function ArchiveViewer({ url, fileName }: { url: string; fileName: string }) {
+  const [entries, setEntries] = useState<{ name: string; size: number; isDir: boolean }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("加载失败");
+        const ab = await res.arrayBuffer();
+        const JSZip = (await import("jszip")).default;
+        const zip = await JSZip.loadAsync(ab);
+        const list: { name: string; size: number; isDir: boolean }[] = [];
+        zip.forEach((path, file) => {
+          const size = (file as unknown as { _data?: { uncompressedSize?: number } })._data?.uncompressedSize ?? 0;
+          list.push({ name: path, size, isDir: file.dir });
+        });
+        list.sort((a, b) => a.name.localeCompare(b.name));
+        if (!cancelled) setEntries(list);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "解析失败（rar/7z/tar 等格式暂不支持在线预览，请下载）");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+
+  if (loading) return <PreviewLoading />;
+  if (error) return <PreviewError msg={error} />;
+  const fileCount = entries.filter((e) => !e.isDir).length;
+  return (
+    <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-hidden bg-white text-zinc-800 rounded-lg shadow-lg flex flex-col">
+      <div className="px-4 py-2 border-b border-zinc-200 text-xs text-zinc-500 shrink-0">{fileCount} 个文件 · {fileName}</div>
+      <div className="overflow-auto">
+        <table className="w-full text-sm">
+          <tbody>
+            {entries.map((e, i) => (
+              <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50">
+                <td className="px-4 py-1.5">
+                  <span className={e.isDir ? "font-medium text-blue-600" : "text-zinc-700"}>{e.name}</span>
+                </td>
+                <td className="px-4 py-1.5 text-right text-zinc-500 tabular-nums w-24">{e.isDir ? "-" : formatBytesPreview(e.size)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function decodeXmlEntities(s: string): string {
+  return s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
 }

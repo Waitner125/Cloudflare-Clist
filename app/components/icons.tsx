@@ -182,7 +182,12 @@ export function fileTypeIcon(type: FileType) {
       return FileCode;
     case "pdf":
     case "text":
+    case "docx":
+    case "xlsx":
+    case "pptx":
       return FileText;
+    case "archive":
+      return FileArchive;
     default:
       return FileText;
   }

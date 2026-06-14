@@ -125,3 +125,47 @@ html::view-transition-old(root) {
 html::view-transition-new(root) {
   z-index: 2147483646;
 }
+
+/* docx 预览排版（mammoth 输出的 HTML，Tailwind preflight 会清掉默认样式，需手动补） */
+.docx-content {
+  line-height: 1.6;
+}
+.docx-content p {
+  margin: 0 0 0.75em;
+}
+.docx-content h1,
+.docx-content h2,
+.docx-content h3,
+.docx-content h4 {
+  font-weight: 600;
+  margin: 1em 0 0.5em;
+  line-height: 1.3;
+}
+.docx-content h1 { font-size: 1.5em; }
+.docx-content h2 { font-size: 1.3em; }
+.docx-content h3 { font-size: 1.15em; }
+.docx-content ul,
+.docx-content ol {
+  margin: 0 0 0.75em 1.5em;
+}
+.docx-content ul { list-style: disc; }
+.docx-content ol { list-style: decimal; }
+.docx-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0 0 0.75em;
+  font-size: 0.9em;
+}
+.docx-content td,
+.docx-content th {
+  border: 1px solid rgb(212 212 216);
+  padding: 4px 8px;
+}
+.docx-content a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+.docx-content img {
+  max-width: 100%;
+  height: auto;
+}

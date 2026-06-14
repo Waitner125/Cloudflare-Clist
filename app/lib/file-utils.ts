@@ -1,6 +1,6 @@
 // File type detection utilities
 
-export type FileType = 'video' | 'audio' | 'image' | 'text' | 'code' | 'markdown' | 'pdf' | 'unknown';
+export type FileType = 'video' | 'audio' | 'image' | 'text' | 'code' | 'markdown' | 'pdf' | 'docx' | 'xlsx' | 'pptx' | 'archive' | 'unknown';
 
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogg', 'mov', 'avi', 'mkv', 'm4v', 'flv', 'wmv', '3gp'];
 const AUDIO_EXTENSIONS = ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a', 'wma', 'opus', 'webm'];
@@ -16,6 +16,10 @@ const CODE_EXTENSIONS = [
   'dockerfile', 'makefile', 'cmake', 'gradle', 'env'
 ];
 const PDF_EXTENSIONS = ['pdf'];
+const DOCX_EXTENSIONS = ['docx'];
+const XLSX_EXTENSIONS = ['xls', 'xlsx', 'csv'];
+const PPTX_EXTENSIONS = ['pptx'];
+const ARCHIVE_EXTENSIONS = ['zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz'];
 
 export function getFileExtension(filename: string): string {
   const parts = filename.toLowerCase().split('.');
@@ -29,6 +33,10 @@ export function getFileType(filename: string): FileType {
   if (AUDIO_EXTENSIONS.includes(ext)) return 'audio';
   if (IMAGE_EXTENSIONS.includes(ext)) return 'image';
   if (PDF_EXTENSIONS.includes(ext)) return 'pdf';
+  if (DOCX_EXTENSIONS.includes(ext)) return 'docx';
+  if (XLSX_EXTENSIONS.includes(ext)) return 'xlsx';
+  if (PPTX_EXTENSIONS.includes(ext)) return 'pptx';
+  if (ARCHIVE_EXTENSIONS.includes(ext)) return 'archive';
   if (MARKDOWN_EXTENSIONS.includes(ext)) return 'markdown';
   if (CODE_EXTENSIONS.includes(ext)) return 'code';
   if (TEXT_EXTENSIONS.includes(ext)) return 'text';
@@ -38,7 +46,7 @@ export function getFileType(filename: string): FileType {
 
 export function isPreviewable(filename: string): boolean {
   const type = getFileType(filename);
-  return ['video', 'audio', 'image', 'text', 'code', 'markdown', 'pdf'].includes(type);
+  return ['video', 'audio', 'image', 'text', 'code', 'markdown', 'pdf', 'docx', 'xlsx', 'pptx', 'archive'].includes(type);
 }
 
 export function getMimeType(filename: string): string {
