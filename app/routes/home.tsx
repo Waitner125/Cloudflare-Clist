@@ -9,7 +9,7 @@ import {
   X, Plus, Search, Sun, Moon, SlidersHorizontal, LogIn, LogOut, ShieldCheck, Cloud,
   ChevronRight, ArrowLeft, ArrowRightLeft, RefreshCw, PanelLeft,
   FolderPlus, Upload, Download, Copy, Share2, Pencil, Trash2, Play, BarChart3, FileText,
-  Folder, AlertCircle, Github, fileTypeIcon, Globe,
+  Folder, AlertCircle, Github, fileTypeIcon, Globe, LayoutGrid, List,
 } from "~/components/icons";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -1782,6 +1782,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [globalSearch, setGlobalSearch] = useState(false);
   const [globalResults, setGlobalResults] = useState<S3Object[]>([]);
   const [globalLoading, setGlobalLoading] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "gallery">("list");
   const [deleting, setDeleting] = useState(false);
   const [renameTarget, setRenameTarget] = useState<S3Object | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -1822,7 +1823,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/files/${storage.id}/${f.key}`);
+        const res = await fetch(`/api/files/${storage.id}/${f.key}?action=download`);
         if (!res.ok) return;
         const text = await res.text();
         marked.setOptions({ gfm: true, breaks: true });
@@ -2709,6 +2710,14 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           >
             <Globe />
           </button>
+          <button
+            onClick={() => setViewMode((v) => (v === "list" ? "gallery" : "list"))}
+            className={`icon-btn h-8 w-8 ${viewMode === "gallery" ? "text-blue-600 dark:text-blue-400 bg-blue-500/10" : ""}`}
+            title={viewMode === "list" ? "网格视图" : "列表视图"}
+            aria-label="切换视图"
+          >
+            {viewMode === "list" ? <LayoutGrid /> : <List />}
+          </button>
           {/* Batch actions */}
           {isAdmin && selectedKeys.size > 0 && (
             <>
@@ -2984,6 +2993,34 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           <div className="flex flex-col items-center justify-center h-32 gap-2 text-zinc-400 dark:text-zinc-600">
             <Folder className="h-8 w-8" />
             <span className="text-sm">空目录</span>
+          </div>
+        ) : viewMode === "gallery" ? (
+          <div className="p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+            {visibleObjects.map((obj) => {
+              const isImg = !obj.isDirectory && getFileType(obj.name) === "image";
+              const Ic = obj.isDirectory ? null : fileTypeIcon(getFileType(obj.name));
+              return (
+                <div
+                  key={obj.key}
+                  onClick={() => (obj.isDirectory ? navigateTo(obj.key) : isPreviewable(obj.name) ? handlePreview(obj) : downloadFile(obj.key))}
+                  className={`group relative cursor-pointer rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm transition ${selectedKeys.has(obj.key) ? "ring-2 ring-blue-500" : ""}`}
+                >
+                  <div className="aspect-square flex items-center justify-center bg-zinc-50 dark:bg-zinc-800/50 overflow-hidden">
+                    {isImg ? (
+                      <img src={`/api/files/${storage.id}/${obj.key}`} alt={obj.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                    ) : obj.isDirectory ? (
+                      <Folder className="h-10 w-10 text-blue-500" />
+                    ) : Ic ? (
+                      <Ic className="h-10 w-10 text-zinc-400" />
+                    ) : null}
+                  </div>
+                  <div className="px-2 py-1.5">
+                    <div className="truncate text-xs text-zinc-700 dark:text-zinc-200">{obj.name}</div>
+                    <div className="truncate text-[10px] text-zinc-400">{obj.isDirectory ? "文件夹" : formatBytes(obj.size)}</div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <table className="w-full text-sm">

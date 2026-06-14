@@ -91,6 +91,12 @@ export const Cloud = (p: IconProps) => (
 export const Globe = (p: IconProps) => (
   <Svg {...p}><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></Svg>
 );
+export const LayoutGrid = (p: IconProps) => (
+  <Svg {...p}><rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" /><rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" /></Svg>
+);
+export const List = (p: IconProps) => (
+  <Svg {...p}><path d="M8 6h13" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M3 6h.01" /><path d="M3 12h.01" /><path d="M3 18h.01" /></Svg>
+);
 
 /* ---------- 文件操作 ---------- */
 export const FolderPlus = (p: IconProps) => (
