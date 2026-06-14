@@ -1783,6 +1783,9 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [moveDestPath, setMoveDestPath] = useState("");
   const [moving, setMoving] = useState(false);
   const [allFolders, setAllFolders] = useState<string[]>([]);
+  const [batchMoveOpen, setBatchMoveOpen] = useState(false);
+  const [batchMoveDest, setBatchMoveDest] = useState("");
+  const [batchMoving, setBatchMoving] = useState(false);
   const [shareTarget, setShareTarget] = useState<S3Object | null>(null);
   const [shareToken, setShareToken] = useState("");
   const [shareUrl, setShareUrl] = useState("");
@@ -2087,6 +2090,55 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     } finally {
       setDeleting(false);
     }
+  };
+
+  const startBatchMove = async () => {
+    if (selectedKeys.size === 0) return;
+    setBatchMoveDest("");
+    await loadAllFolders();
+    setBatchMoveOpen(true);
+  };
+
+  const handleBatchMove = async () => {
+    if (selectedKeys.size === 0) return;
+    setBatchMoving(true);
+    let failed = 0;
+    try {
+      for (const key of selectedKeys) {
+        try {
+          const res = await fetch(`/api/files/${storage.id}/${key}?action=move`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ destPath: batchMoveDest }),
+          });
+          if (!res.ok) failed++;
+        } catch {
+          failed++;
+        }
+      }
+      if (failed > 0) alert(`移动完成，${failed} 个项目失败`);
+      setBatchMoveOpen(false);
+      setSelectedKeys(new Set());
+      loadFiles();
+    } finally {
+      setBatchMoving(false);
+    }
+  };
+
+  const handleBatchDownload = () => {
+    const files = objects.filter((obj) => !obj.isDirectory && selectedKeys.has(obj.key));
+    const folders = objects.filter((obj) => obj.isDirectory && selectedKeys.has(obj.key));
+    if (files.length === 0) {
+      alert("未选中可下载的文件（文件夹暂不支持批量下载）");
+      return;
+    }
+    if (folders.length > 0) {
+      alert(`已忽略 ${folders.length} 个文件夹，开始下载 ${files.length} 个文件（如被浏览器拦截，请允许弹窗）`);
+    }
+    // 间隔触发，避免浏览器拦截多窗口
+    files.forEach((f, i) => {
+      setTimeout(() => window.open(`/api/files/${storage.id}/${f.key}?action=download`, "_blank"), i * 400);
+    });
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2548,16 +2600,26 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
               </button>
             )}
           </div>
-          {/* Batch delete button */}
+          {/* Batch actions */}
           {isAdmin && selectedKeys.size > 0 && (
-            <button
-              onClick={handleBatchDelete}
-              disabled={deleting}
-              className="btn btn-sm btn-danger"
-            >
-              <Trash2 />
-              {deleting ? "删除中..." : `删除 (${selectedKeys.size})`}
-            </button>
+            <>
+              <button onClick={startBatchMove} className="btn btn-sm btn-outline">
+                <ArrowRightLeft />
+                {`移动 (${selectedKeys.size})`}
+              </button>
+              <button onClick={handleBatchDownload} className="btn btn-sm btn-outline">
+                <Download />
+                {`下载 (${objects.filter((o) => !o.isDirectory && selectedKeys.has(o.key)).length})`}
+              </button>
+              <button
+                onClick={handleBatchDelete}
+                disabled={deleting}
+                className="btn btn-sm btn-danger"
+              >
+                <Trash2 />
+                {deleting ? "删除中..." : `删除 (${selectedKeys.size})`}
+              </button>
+            </>
           )}
           {path && (
             <button onClick={goUp} className="btn btn-sm btn-ghost" title="返回上级目录">
@@ -2876,6 +2938,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           hasPrev={currentPreviewIndex > 0}
           hasNext={currentPreviewIndex < previewableFiles.length - 1}
           canEdit={canUpload}
+          onFileChanged={loadFiles}
         />
       )}
 
@@ -3004,6 +3067,33 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
             <div className="flex gap-2">
               <button onClick={() => setMoveTarget(null)} className="btn btn-outline flex-1 py-2">取消</button>
               <button onClick={handleMove} disabled={moving} className="btn btn-primary flex-1 py-2">{moving ? "处理中…" : "确定"}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Batch Move Modal */}
+      {batchMoveOpen && (
+        <Modal title="批量移动到" onClose={() => setBatchMoveOpen(false)}>
+          <div className="space-y-4">
+            <div className="text-xs text-zinc-500">将 {selectedKeys.size} 个选中项目移动到：</div>
+            <div>
+              <label className="block text-xs text-zinc-500 mb-1.5">目标文件夹</label>
+              <select
+                value={batchMoveDest}
+                onChange={(e) => setBatchMoveDest(e.target.value)}
+                className="field"
+              >
+                {allFolders.map((folder) => (
+                  <option key={folder} value={folder}>
+                    {folder === "" ? "/ (根目录)" : "/" + folder}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setBatchMoveOpen(false)} className="btn btn-outline flex-1 py-2">取消</button>
+              <button onClick={handleBatchMove} disabled={batchMoving} className="btn btn-primary flex-1 py-2">{batchMoving ? "处理中…" : "确定"}</button>
             </div>
           </div>
         </Modal>
