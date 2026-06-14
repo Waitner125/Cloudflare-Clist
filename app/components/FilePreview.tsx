@@ -1213,7 +1213,7 @@ function DocxViewer({ url }: { url: string }) {
   if (loading) return <PreviewLoading />;
   if (error) return <PreviewError msg={error} />;
   return (
-    <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-auto bg-white text-zinc-800 rounded-lg p-8 sm:p-12 shadow-lg">
+    <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-auto bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 rounded-lg p-8 sm:p-12 shadow-lg">
       <div className="docx-content" dangerouslySetInnerHTML={{ __html: html }} />
     </div>
   );
@@ -1255,7 +1255,7 @@ function XlsxViewer({ url }: { url: string }) {
   if (error) return <PreviewError msg={error} />;
   const sheet = sheets[activeSheet];
   return (
-    <div className="w-full max-w-6xl max-h-[calc(100vh-120px)] overflow-hidden bg-white text-zinc-800 rounded-lg shadow-lg flex flex-col">
+    <div className="w-full max-w-6xl max-h-[calc(100vh-120px)] overflow-hidden bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 rounded-lg shadow-lg flex flex-col">
       {sheets.length > 1 && (
         <div className="flex gap-1 border-b border-zinc-200 p-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {sheets.map((s, i) => (
@@ -1323,7 +1323,7 @@ function PptxViewer({ url }: { url: string }) {
   if (loading) return <PreviewLoading />;
   if (error) return <PreviewError msg={error} />;
   return (
-    <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-auto bg-white text-zinc-800 rounded-lg shadow-lg p-6 space-y-4">
+    <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-auto bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 rounded-lg shadow-lg p-6 space-y-4">
       <p className="text-xs text-zinc-400">提示：仅提取幻灯片文本，不还原图文版式</p>
       {slides.length === 0 && <p className="text-zinc-400 text-sm">（无可读取文本，可能是纯图片 PPT）</p>}
       {slides.map((s, i) => (
@@ -1372,7 +1372,7 @@ function ArchiveViewer({ url, fileName }: { url: string; fileName: string }) {
   if (error) return <PreviewError msg={error} />;
   const fileCount = entries.filter((e) => !e.isDir).length;
   return (
-    <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-hidden bg-white text-zinc-800 rounded-lg shadow-lg flex flex-col">
+    <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-hidden bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 rounded-lg shadow-lg flex flex-col">
       <div className="px-4 py-2 border-b border-zinc-200 text-xs text-zinc-500 shrink-0">{fileCount} 个文件 · {fileName}</div>
       <div className="overflow-auto">
         <table className="w-full text-sm">
