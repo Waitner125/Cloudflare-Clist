@@ -4,11 +4,12 @@ import { getAllStorages, getPublicStorages, initDatabase } from "~/lib/storage";
 import { useState, useEffect, useCallback } from "react";
 import { FilePreview } from "~/components/FilePreview";
 import { getFileType, isPreviewable } from "~/lib/file-utils";
+import { marked } from "marked";
 import {
   X, Plus, Search, Sun, Moon, SlidersHorizontal, LogIn, LogOut, ShieldCheck, Cloud,
   ChevronRight, ArrowLeft, ArrowRightLeft, RefreshCw, PanelLeft,
-  FolderPlus, Upload, Download, Copy, Share2, Pencil, Trash2, Play, BarChart3,
-  Folder, AlertCircle, Github, fileTypeIcon,
+  FolderPlus, Upload, Download, Copy, Share2, Pencil, Trash2, Play, BarChart3, FileText,
+  Folder, AlertCircle, Github, fileTypeIcon, Globe,
 } from "~/components/icons";
 
 export function meta({ data }: Route.MetaArgs) {
@@ -1775,6 +1776,12 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [offlineFilename, setOfflineFilename] = useState("");
   const [offlineDownloading, setOfflineDownloading] = useState(false);
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
+  const [readme, setReadme] = useState<string | null>(null);
+  const [readmeOpen, setReadmeOpen] = useState(true);
+  const [dragOver, setDragOver] = useState(false);
+  const [globalSearch, setGlobalSearch] = useState(false);
+  const [globalResults, setGlobalResults] = useState<S3Object[]>([]);
+  const [globalLoading, setGlobalLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [renameTarget, setRenameTarget] = useState<S3Object | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -1789,6 +1796,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [shareTarget, setShareTarget] = useState<S3Object | null>(null);
   const [shareToken, setShareToken] = useState("");
   const [shareUrl, setShareUrl] = useState("");
+  const [shareQrCode, setShareQrCode] = useState("");
   const [customShareToken, setCustomShareToken] = useState("");
   const [shareExpireHours, setShareExpireHours] = useState(0);
   const [sharePassword, setSharePassword] = useState("");
@@ -1804,6 +1812,28 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     loadFiles();
     setSelectedKeys(new Set()); // Clear selection on path change
   }, [storage.id, path]);
+
+  // 目录 README.md 自动展示
+  useEffect(() => {
+    setReadme(null);
+    if (!objects.length) return;
+    const f = objects.find((o) => !o.isDirectory && /^readme\.md$/i.test(o.name));
+    if (!f) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/files/${storage.id}/${f.key}`);
+        if (!res.ok) return;
+        const text = await res.text();
+        marked.setOptions({ gfm: true, breaks: true });
+        const html = await marked(text);
+        if (!cancelled) setReadme(html);
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [objects, storage.id]);
 
   const loadFiles = async () => {
     setLoading(true);
@@ -1964,6 +1994,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     setShareTarget(obj);
     setShareToken("");
     setShareUrl("");
+    setShareQrCode("");
     setCustomShareToken("");
     setShareExpireHours(0);
     setSharePassword("");
@@ -1998,6 +2029,13 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
         const data = (await res.json()) as { share: { shareToken: string }; shareUrl: string };
         setShareToken(data.share.shareToken);
         setShareUrl(data.shareUrl);
+        try {
+          const QRCode = await import("qrcode");
+          const dataUrl = await QRCode.toDataURL(data.shareUrl, { margin: 1, width: 240 });
+          setShareQrCode(dataUrl);
+        } catch {
+          setShareQrCode("");
+        }
       } else {
         const data = (await res.json()) as { error?: string };
         alert(data.error || "创建分享链接失败");
@@ -2141,16 +2179,57 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     });
   };
 
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  // 全局搜索：从根 BFS 递归列目录，匹配文件名（限流防大存储卡死）
+  const searchGlobal = async (query: string) => {
+    const q = query.trim().toLowerCase();
+    if (!q) { setGlobalResults([]); return; }
+    setGlobalLoading(true);
+    const results: S3Object[] = [];
+    const visited = new Set<string>();
+    const queue: string[] = [""];
+    const MAX_RESULTS = 200;
+    const MAX_DIRS = 400;
+    let dirs = 0;
+    try {
+      while (queue.length > 0 && results.length < MAX_RESULTS && dirs < MAX_DIRS) {
+        const prefix = queue.shift()!;
+        if (visited.has(prefix)) continue;
+        visited.add(prefix);
+        dirs++;
+        try {
+          const res = await fetch(`/api/files/${storage.id}/${prefix}?action=list`);
+          if (!res.ok) continue;
+          const data = (await res.json()) as { objects?: S3Object[] };
+          for (const obj of data.objects || []) {
+            if (results.length >= MAX_RESULTS) break;
+            if (obj.name.toLowerCase().includes(q)) results.push(obj);
+            if (obj.isDirectory) queue.push(obj.key);
+          }
+        } catch {
+          /* skip unreadable dir */
+        }
+      }
+      setGlobalResults(results);
+    } finally {
+      setGlobalLoading(false);
+    }
+  };
 
+  useEffect(() => {
+    if (!globalSearch) { setGlobalResults([]); setGlobalLoading(false); return; }
+    const q = searchQuery.trim();
+    if (q.length < 1) { setGlobalResults([]); return; }
+    const t = setTimeout(() => searchGlobal(q), 450);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [globalSearch, searchQuery, storage.id]);
+
+  const uploadFiles = async (fileList: File[]) => {
+    if (fileList.length === 0) return;
     const CHUNK_SIZE = chunkSizeMB * 1024 * 1024;
-
-    for (const file of Array.from(files)) {
+    for (const file of fileList) {
       try {
         const uploadPath = path ? `${path}/${file.name}` : file.name;
-
         const canMultipart = supportsMultipart(storage.type);
         if (file.size >= CHUNK_SIZE && canMultipart) {
           await uploadMultipart(file, uploadPath, CHUNK_SIZE);
@@ -2163,8 +2242,29 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     }
     setUploadProgress(null);
     loadFiles();
+  };
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    await uploadFiles(Array.from(files));
     e.target.value = "";
   };
+
+  // Ctrl+V 粘贴图片/文件直接上传到当前目录
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (!canUpload) return;
+      const files = e.clipboardData?.files;
+      if (files && files.length > 0) {
+        e.preventDefault();
+        uploadFiles(Array.from(files));
+      }
+    };
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canUpload, path, storage.id, storage.type, chunkSizeMB]);
 
   const uploadSingle = async (file: File, uploadPath: string) => {
     await new Promise<void>((resolve, reject) => {
@@ -2519,6 +2619,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const breadcrumbs = path ? path.split("/").filter(Boolean) : [];
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
+  const globalMode = globalSearch && searchQuery.trim().length > 0;
   const visibleObjects = normalizedQuery
     ? objects.filter((obj) => obj.name.toLowerCase().includes(normalizedQuery))
     : objects;
@@ -2600,6 +2701,14 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
               </button>
             )}
           </div>
+          <button
+            onClick={() => { setGlobalSearch((g) => !g); setGlobalResults([]); }}
+            className={`icon-btn h-8 w-8 ${globalSearch ? "text-blue-600 dark:text-blue-400 bg-blue-500/10" : ""}`}
+            title={globalSearch ? "全局搜索中（点击切回当前目录）" : "全局搜索"}
+            aria-label="全局搜索"
+          >
+            <Globe />
+          </button>
           {/* Batch actions */}
           {isAdmin && selectedKeys.size > 0 && (
             <>
@@ -2796,9 +2905,72 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
         </div>
       )}
 
+      {/* Directory README */}
+      {readme && (
+        <div className="border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40">
+          <button
+            onClick={() => setReadmeOpen((o) => !o)}
+            className="flex items-center gap-2 w-full px-4 py-2 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/40"
+          >
+            <FileText className="h-4 w-4 text-blue-500 shrink-0" />
+            <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">README</span>
+            <span className="text-xs text-zinc-400 ml-auto">{readmeOpen ? "收起" : "展开"}</span>
+          </button>
+          {readmeOpen && (
+            <div className="px-4 pb-4 pt-1 max-w-4xl">
+              <div className="docx-content text-sm" dangerouslySetInnerHTML={{ __html: readme }} />
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Content */}
-      <div className="flex-1 overflow-auto">
-        {loading ? (
+      <div
+        className="flex-1 overflow-auto relative"
+        onDragOver={(e) => { if (!canUpload) return; e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (canUpload && e.dataTransfer.files.length > 0) {
+            uploadFiles(Array.from(e.dataTransfer.files));
+          }
+        }}
+      >
+        {dragOver && (
+          <div className="absolute inset-2 z-20 bg-blue-500/10 border-2 border-dashed border-blue-500 rounded-lg flex items-center justify-center pointer-events-none">
+            <span className="text-blue-600 dark:text-blue-300 font-medium text-lg">松开以上传到当前目录</span>
+          </div>
+        )}
+        {globalMode ? (
+          <div className="p-4">
+            {globalLoading && (
+              <div className="flex items-center justify-center gap-2 h-20 text-zinc-500 text-sm">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                搜索中…（已找到 {globalResults.length}）
+              </div>
+            )}
+            {!globalLoading && globalResults.length === 0 && (
+              <div className="flex items-center justify-center h-20 text-zinc-400 text-sm">无匹配结果</div>
+            )}
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {globalResults.map((obj) => {
+                const parent = obj.key.includes("/") ? obj.key.slice(0, obj.key.lastIndexOf("/")) : "";
+                return (
+                  <button
+                    key={obj.key}
+                    onClick={() => { setGlobalSearch(false); setSearchQuery(""); navigateTo(parent); }}
+                    className="flex items-center gap-2 w-full px-4 py-2 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800/40"
+                  >
+                    {obj.isDirectory ? <Folder className="h-4 w-4 shrink-0 text-blue-500" /> : <span className="text-zinc-400">{getFileIcon(obj.name)}</span>}
+                    <span className="truncate font-medium text-zinc-700 dark:text-zinc-200">{obj.name}</span>
+                    {parent && <span className="truncate text-xs text-zinc-400 ml-auto">/{parent}</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center gap-2 h-32 text-zinc-500 text-sm">
             <RefreshCw className="h-4 w-4 animate-spin" />
             加载中…
@@ -3035,6 +3207,14 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                       <button onClick={() => copyToClipboard(shareUrl)} className="btn btn-outline py-2"><Copy />复制</button>
                     </div>
                   </div>
+                  {shareQrCode && (
+                    <div>
+                      <label className="block text-xs text-zinc-500 mb-1.5">扫码访问</label>
+                      <div className="flex justify-center">
+                        <img src={shareQrCode} alt="分享二维码" className="w-44 h-44 rounded-lg bg-white p-2" />
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <button onClick={() => setShareTarget(null)} className="btn btn-primary flex-1 py-2">完成</button>

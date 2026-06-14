@@ -88,6 +88,9 @@ export const ShieldCheck = (p: IconProps) => (
 export const Cloud = (p: IconProps) => (
   <Svg {...p}><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" /></Svg>
 );
+export const Globe = (p: IconProps) => (
+  <Svg {...p}><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></Svg>
+);
 
 /* ---------- 文件操作 ---------- */
 export const FolderPlus = (p: IconProps) => (
