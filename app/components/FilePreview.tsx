@@ -16,6 +16,7 @@ interface FilePreviewProps {
   hasPrev?: boolean;
   hasNext?: boolean;
   canEdit?: boolean;
+  onFileChanged?: () => void;
 }
 
 export function FilePreview({
@@ -30,6 +31,7 @@ export function FilePreview({
   hasPrev,
   hasNext,
   canEdit,
+  onFileChanged,
 }: FilePreviewProps) {
   const fileType = getFileType(fileName);
   const inlineFileUrl = `/api/files/${storageId}/${fileKey}`;
@@ -157,13 +159,13 @@ export function FilePreview({
           {fileType === "audio" && <AudioPlayer url={previewFileUrlWithToken} fileName={fileName} />}
           {fileType === "image" && <ImageViewer url={previewFileUrlWithToken} fileName={fileName} />}
           {fileType === "text" && (
-            <TextViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} />
+            <TextViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} onFileChanged={onFileChanged} />
           )}
           {fileType === "code" && (
-            <CodeViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} />
+            <CodeViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} onFileChanged={onFileChanged} />
           )}
           {fileType === "markdown" && (
-            <MarkdownViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} />
+            <MarkdownViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} onFileChanged={onFileChanged} />
           )}
           {fileType === "pdf" && <PDFViewer url={previewFileUrlWithToken} />}
           {fileType === "docx" && <DocxViewer url={previewFileUrlWithToken} />}
@@ -254,7 +256,7 @@ function useFileEditor(opts: {
       {!editing && (
         <button
           onClick={start}
-          className="inline-flex items-center gap-1 text-xs text-zinc-300 hover:text-white px-2 py-1 border border-zinc-700 hover:border-zinc-500 rounded transition"
+          className="inline-flex items-center gap-1 text-xs font-medium bg-blue-600 text-white hover:bg-blue-500 px-2.5 py-1 rounded transition"
         >
           <Pencil className="h-3.5 w-3.5" /> 编辑
         </button>
@@ -771,7 +773,7 @@ function ImageViewer({ url, fileName }: { url: string; fileName: string }) {
 }
 
 // Text Viewer Component (plain text without syntax highlighting)
-function TextViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileName: string; canEdit?: boolean; uploadUrl?: string }) {
+function TextViewer({ url, fileName, canEdit, uploadUrl, onFileChanged }: { url: string; fileName: string; canEdit?: boolean; uploadUrl?: string; onFileChanged?: () => void }) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -800,7 +802,10 @@ function TextViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileNa
     content,
     uploadUrl,
     mime: getMimeType(fileName),
-    onSaved: () => setReloadKey((k) => k + 1),
+    onSaved: () => {
+      setReloadKey((k) => k + 1);
+      onFileChanged?.();
+    },
   });
 
   if (loading) {
@@ -850,7 +855,7 @@ function TextViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileNa
 }
 
 // Code Viewer Component (with syntax highlighting)
-function CodeViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileName: string; canEdit?: boolean; uploadUrl?: string }) {
+function CodeViewer({ url, fileName, canEdit, uploadUrl, onFileChanged }: { url: string; fileName: string; canEdit?: boolean; uploadUrl?: string; onFileChanged?: () => void }) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -891,7 +896,10 @@ function CodeViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileNa
     content,
     uploadUrl,
     mime: getMimeType(fileName),
-    onSaved: () => setReloadKey((k) => k + 1),
+    onSaved: () => {
+      setReloadKey((k) => k + 1);
+      onFileChanged?.();
+    },
   });
 
   if (loading) {
@@ -1022,7 +1030,7 @@ function CodeViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileNa
 }
 
 // Markdown Viewer Component
-function MarkdownViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fileName: string; canEdit?: boolean; uploadUrl?: string }) {
+function MarkdownViewer({ url, fileName, canEdit, uploadUrl, onFileChanged }: { url: string; fileName: string; canEdit?: boolean; uploadUrl?: string; onFileChanged?: () => void }) {
   const [content, setContent] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
@@ -1077,7 +1085,10 @@ function MarkdownViewer({ url, fileName, canEdit, uploadUrl }: { url: string; fi
     content,
     uploadUrl,
     mime: getMimeType(fileName),
-    onSaved: () => setReloadKey((k) => k + 1),
+    onSaved: () => {
+      setReloadKey((k) => k + 1);
+      onFileChanged?.();
+    },
   });
 
   if (loading) {
@@ -1419,9 +1430,9 @@ function XlsxViewer({ url }: { url: string }) {
   return (
     <div className="w-full max-w-6xl max-h-[calc(100vh-120px)] overflow-hidden bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 rounded-lg shadow-lg flex flex-col">
       {sheets.length > 1 && (
-        <div className="flex gap-1 border-b border-zinc-200 p-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex gap-1 border-b border-zinc-200 dark:border-zinc-700 p-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {sheets.map((s, i) => (
-            <button key={i} onClick={() => setActiveSheet(i)} className={`px-3 py-1 text-xs rounded whitespace-nowrap ${i === activeSheet ? "bg-blue-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}>{s.name}</button>
+            <button key={i} onClick={() => setActiveSheet(i)} className={`px-3 py-1 text-xs rounded whitespace-nowrap ${i === activeSheet ? "bg-blue-600 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"}`}>{s.name}</button>
           ))}
         </div>
       )}
@@ -1430,9 +1441,9 @@ function XlsxViewer({ url }: { url: string }) {
           <tbody>
             {sheet?.rows.map((row, ri) => (
               <tr key={ri}>
-                <td className="border border-zinc-200 px-2 py-1 bg-zinc-50 text-zinc-400 sticky left-0">{ri + 1}</td>
+                <td className="border border-zinc-200 dark:border-zinc-700 px-2 py-1 bg-zinc-50 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 sticky left-0">{ri + 1}</td>
                 {(row as unknown[]).map((cell, ci) => (
-                  <td key={ci} className="border border-zinc-200 px-2 py-1 whitespace-nowrap">{String(cell ?? "")}</td>
+                  <td key={ci} className="border border-zinc-200 dark:border-zinc-700 px-2 py-1 whitespace-nowrap">{String(cell ?? "")}</td>
                 ))}
               </tr>
             ))}
@@ -1489,7 +1500,7 @@ function PptxViewer({ url }: { url: string }) {
       <p className="text-xs text-zinc-400">提示：仅提取幻灯片文本，不还原图文版式</p>
       {slides.length === 0 && <p className="text-zinc-400 text-sm">（无可读取文本，可能是纯图片 PPT）</p>}
       {slides.map((s, i) => (
-        <div key={i} className="border border-zinc-200 rounded-lg p-4">
+        <div key={i} className="border border-zinc-200 dark:border-zinc-700 rounded-lg p-4">
           <div className="text-xs text-zinc-400 mb-2">第 {i + 1} 页</div>
           <pre className="whitespace-pre-wrap text-sm font-sans">{s || "（空白页）"}</pre>
         </div>
@@ -1535,16 +1546,16 @@ function ArchiveViewer({ url, fileName }: { url: string; fileName: string }) {
   const fileCount = entries.filter((e) => !e.isDir).length;
   return (
     <div className="w-full max-w-3xl max-h-[calc(100vh-120px)] overflow-hidden bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 rounded-lg shadow-lg flex flex-col">
-      <div className="px-4 py-2 border-b border-zinc-200 text-xs text-zinc-500 shrink-0">{fileCount} 个文件 · {fileName}</div>
+      <div className="px-4 py-2 border-b border-zinc-200 dark:border-zinc-700 text-xs text-zinc-500 dark:text-zinc-400 shrink-0">{fileCount} 个文件 · {fileName}</div>
       <div className="overflow-auto">
         <table className="w-full text-sm">
           <tbody>
             {entries.map((e, i) => (
-              <tr key={i} className="border-b border-zinc-100 hover:bg-zinc-50">
+              <tr key={i} className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800">
                 <td className="px-4 py-1.5">
-                  <span className={e.isDir ? "font-medium text-blue-600" : "text-zinc-700"}>{e.name}</span>
+                  <span className={e.isDir ? "font-medium text-blue-600 dark:text-blue-400" : "text-zinc-700 dark:text-zinc-300"}>{e.name}</span>
                 </td>
-                <td className="px-4 py-1.5 text-right text-zinc-500 tabular-nums w-24">{e.isDir ? "-" : formatBytesPreview(e.size)}</td>
+                <td className="px-4 py-1.5 text-right text-zinc-500 dark:text-zinc-400 tabular-nums w-24">{e.isDir ? "-" : formatBytesPreview(e.size)}</td>
               </tr>
             ))}
           </tbody>
