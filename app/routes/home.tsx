@@ -1603,6 +1603,121 @@ function StorageStatsModal({ storage, onClose }: { storage: StorageInfo; onClose
   );
 }
 
+function FolderStatsModal({ name, stats, onClose }: { name: string; stats: StorageStats; onClose: () => void }) {
+  const sortedTypes = Object.entries(stats.typeDistribution).sort((a, b) => b[1].size - a[1].size);
+  const chartItems = (() => {
+    const topTypes = sortedTypes.slice(0, 10);
+    const items = topTypes.map(([ext, data], index) => ({
+      ext, count: data.count, size: data.size,
+      percentage: stats.totalSize > 0 ? (data.size / stats.totalSize) * 100 : 0,
+      color: chartColors[index % chartColors.length],
+    }));
+    const shownSize = topTypes.reduce((s, [, d]) => s + d.size, 0);
+    const shownCount = topTypes.reduce((s, [, d]) => s + d.count, 0);
+    const restSize = stats.totalSize - shownSize;
+    const restCount = stats.fileCount - shownCount;
+    if (restSize > 0 || restCount > 0) {
+      items.push({ ext: "other", count: Math.max(0, restCount), size: Math.max(0, restSize), percentage: stats.totalSize > 0 ? (Math.max(0, restSize) / stats.totalSize) * 100 : 0, color: chartColors[items.length % chartColors.length] });
+    }
+    return items;
+  })();
+  const donutGradient = buildConicGradient(chartItems.map(({ percentage, color }) => ({ percentage, color })));
+  const dominantType = chartItems[0];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-3xl max-h-[84vh] rounded-xl shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
+          <span className="text-zinc-900 dark:text-zinc-100 font-semibold text-sm flex items-center gap-2">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-blue-200 bg-blue-50 text-blue-600 shadow-sm dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-300">
+              <Calculator className="h-[18px] w-[18px]" />
+            </span>
+            目录统计 - {name}
+          </span>
+          <button onClick={onClose} className="icon-btn h-7 w-7" aria-label="关闭"><X /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                <div className="text-xs text-zinc-500 font-medium mb-1">总大小</div>
+                <div className="text-2xl tabular-nums font-semibold text-zinc-900 dark:text-zinc-100">{formatBytes(stats.totalSize)}</div>
+              </div>
+              <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                <div className="text-xs text-zinc-500 font-medium mb-1">文件数量</div>
+                <div className="text-2xl tabular-nums font-semibold text-zinc-900 dark:text-zinc-100">{stats.fileCount.toLocaleString()}</div>
+              </div>
+              <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                <div className="text-xs text-zinc-500 font-medium mb-1">文件夹数量</div>
+                <div className="text-2xl tabular-nums font-semibold text-zinc-900 dark:text-zinc-100">{stats.folderCount.toLocaleString()}</div>
+              </div>
+            </div>
+            {sortedTypes.length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-3">
+                  <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-xs text-zinc-500 font-medium">容量构成</div>
+                      <div className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono">Top {chartItems.length}</div>
+                    </div>
+                    <div className="flex items-center justify-center">
+                      <div className="relative h-40 w-40 rounded-full shadow-inner" style={{ background: donutGradient }} aria-label="文件类型容量环形图">
+                        <div className="absolute inset-5 rounded-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 flex flex-col items-center justify-center">
+                          <div className="text-[11px] text-zinc-500 font-mono">主类型</div>
+                          <div className="text-xl text-zinc-900 dark:text-zinc-100 font-semibold">{dominantType ? `.${dominantType.ext}` : "-"}</div>
+                          <div className="text-xs text-zinc-500 font-medium">{dominantType ? `${dominantType.percentage.toFixed(1)}%` : "0%"}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                    <div className="text-xs text-zinc-500 font-medium mb-3">类型占比</div>
+                    <div className="h-4 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700 flex">
+                      {chartItems.map((item) => (
+                        <div key={item.ext} title={`.${item.ext} ${item.percentage.toFixed(1)}%`} style={{ width: `${Math.max(item.percentage, 1)}%`, backgroundColor: item.color }} />
+                      ))}
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {chartItems.slice(0, 6).map((item) => (
+                        <div key={item.ext} className="min-w-0 rounded border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-2 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                            <span className="truncate text-xs text-zinc-700 dark:text-zinc-300 font-mono">.{item.ext}</span>
+                          </div>
+                          <div className="mt-1 text-[11px] text-zinc-500 font-mono">{formatBytes(item.size)} · {item.percentage.toFixed(1)}%</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded border border-zinc-200 dark:border-zinc-700">
+                  <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-3">文件类型排行</div>
+                  <div className="space-y-2.5">
+                    {chartItems.map((item) => (
+                      <div key={item.ext} className="grid grid-cols-[minmax(48px,72px)_minmax(0,1fr)_minmax(84px,112px)] items-center gap-2 sm:gap-3 text-xs font-medium">
+                        <div className="truncate text-zinc-700 dark:text-zinc-300">.{item.ext}</div>
+                        <div className="h-3 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${Math.max(item.percentage, 1)}%`, backgroundColor: item.color }} />
+                        </div>
+                        <div className="text-right text-zinc-500">{formatBytes(item.size)} · {item.count.toLocaleString()}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8"><span className="text-zinc-400 dark:text-zinc-500 text-sm">此目录为空</span></div>
+            )}
+          </div>
+        </div>
+        <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0">
+          <button onClick={onClose} className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm transition rounded">关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ReleaseItem {
   version: string;
   name: string;
@@ -1788,6 +1903,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   });
   const [favOpen, setFavOpen] = useState(false);
   const [calcSizeKey, setCalcSizeKey] = useState<string | null>(null);
+  const [folderStats, setFolderStats] = useState<{ name: string; stats: StorageStats } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: S3Object } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [renameTarget, setRenameTarget] = useState<S3Object | null>(null);
@@ -2200,9 +2316,10 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   };
 
   // 递归统计文件夹大小
-  const calcFolderSize = async (key: string) => {
+  const calcFolderSize = async (key: string, name: string) => {
     setCalcSizeKey(key);
     let total = 0, count = 0, dirs = 0;
+    const typeDist: Record<string, { count: number; size: number }> = {};
     const queue = [key];
     const visited = new Set<string>();
     try {
@@ -2216,10 +2333,18 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
         const data = (await res.json()) as { objects?: S3Object[] };
         for (const obj of data.objects || []) {
           if (obj.isDirectory) queue.push(obj.key);
-          else { total += obj.size; count++; }
+          else {
+            total += obj.size;
+            count++;
+            const dot = obj.name.lastIndexOf(".");
+            const ext = dot > 0 ? obj.name.slice(dot + 1).toLowerCase().slice(0, 12) : "none";
+            if (!typeDist[ext]) typeDist[ext] = { count: 0, size: 0 };
+            typeDist[ext].count++;
+            typeDist[ext].size += obj.size;
+          }
         }
       }
-      alert(`${count} 个文件 · ${dirs} 个目录\n总大小：${formatBytes(total)}`);
+      setFolderStats({ name, stats: { totalSize: total, fileCount: count, folderCount: dirs, typeDistribution: typeDist } });
     } catch {
       alert("统计失败");
     } finally {
@@ -3185,7 +3310,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                       <div className="flex items-center justify-end gap-0.5">
                         <button onClick={() => toggleFavorite(obj)} className={`icon-btn h-7 w-7 ${isFavorite(obj.key) ? "text-yellow-500" : ""}`} title={isFavorite(obj.key) ? "取消收藏" : "收藏"} aria-label="收藏"><Star /></button>
                         {canDownload && (
-                          <button onClick={() => calcFolderSize(obj.key)} disabled={calcSizeKey === obj.key} className="icon-btn h-7 w-7" title="统计大小" aria-label="统计大小"><Calculator /></button>
+                          <button onClick={() => calcFolderSize(obj.key, obj.name)} disabled={calcSizeKey === obj.key} className="icon-btn h-7 w-7" title="统计大小" aria-label="统计大小"><Calculator /></button>
                         )}
                         {isAdmin && (
                           <>
@@ -3431,7 +3556,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                 <Item icon={<Download className="h-4 w-4" />} label="下载" onClick={() => { downloadFile(obj.key); close(); }} />
               )}
               {obj.isDirectory && canDownload && (
-                <Item icon={<Calculator className="h-4 w-4" />} label={calcSizeKey === obj.key ? "统计中…" : "统计大小"} onClick={() => { calcFolderSize(obj.key); close(); }} />
+                <Item icon={<Calculator className="h-4 w-4" />} label={calcSizeKey === obj.key ? "统计中…" : "统计大小"} onClick={() => { calcFolderSize(obj.key, obj.name); close(); }} />
               )}
               <Item icon={<Star className={`h-4 w-4 ${isFavorite(obj.key) ? "text-yellow-500" : ""}`} />} label={isFavorite(obj.key) ? "取消收藏" : "收藏"} onClick={() => { toggleFavorite(obj); close(); }} />
               {isAdmin && (
@@ -3447,6 +3572,11 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           </>
         );
       })()}
+
+      {/* Folder Stats Modal */}
+      {folderStats && (
+        <FolderStatsModal name={folderStats.name} stats={folderStats.stats} onClose={() => setFolderStats(null)} />
+      )}
     </div>
   );
 }
