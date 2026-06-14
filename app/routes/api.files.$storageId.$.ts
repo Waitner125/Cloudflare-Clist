@@ -125,9 +125,10 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
   if (shareToken) {
     const share = await getShareByToken(db, shareToken);
     if (share && share.storageId === storageId) {
-      // Check if the requested path is within the shared path
-      const sharePath = share.filePath;
-      if (path === sharePath || path.startsWith(sharePath + "/")) {
+      // 规范化：去掉尾部斜杠，避免 "photos/" + "/" = "photos//" 导致子路径匹配失败
+      const sharePath = (share.filePath || "").replace(/\/+$/, "");
+      const sharePathPrefix = sharePath ? sharePath + "/" : "";
+      if (path === sharePath || path === sharePath + "/" || path.startsWith(sharePathPrefix)) {
         shareVerified = true;
       }
       // 若分享设了访问密码，必须校验通过
