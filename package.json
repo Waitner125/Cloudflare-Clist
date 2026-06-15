@@ -27,7 +27,7 @@
 		"xlsx": "^0.18.5"
 	},
 	"devDependencies": {
-		"@cloudflare/vite-plugin": "^1.13.5",
+		"@cloudflare/vite-plugin": "^1.40.2",
 		"@react-router/dev": "^7.10.0",
 		"@tailwindcss/vite": "^4.1.13",
 		"@types/node": "^22",
