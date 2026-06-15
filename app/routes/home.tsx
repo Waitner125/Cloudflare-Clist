@@ -1718,6 +1718,63 @@ function FolderStatsModal({ name, stats, onClose }: { name: string; stats: Stora
   );
 }
 
+function ScanModal({ results, scanning, onNavigate, onClose }: { results: { bigFiles: S3Object[]; duplicates: Array<{ size: number; files: S3Object[] }> } | null; scanning: boolean; onNavigate: (key: string) => void; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/50 dark:bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 w-full max-w-3xl max-h-[84vh] rounded-xl shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-4 py-3 border-b border-zinc-200 dark:border-zinc-700 flex items-center justify-between shrink-0">
+          <span className="text-zinc-900 dark:text-zinc-100 font-semibold text-sm">存储扫描 · 大文件 / 潜在重复</span>
+          <button onClick={onClose} className="icon-btn h-7 w-7" aria-label="关闭"><X /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {scanning ? (
+            <div className="flex items-center justify-center gap-2 py-12 text-zinc-400 text-sm">
+              <RefreshCw className="h-4 w-4 animate-spin" /> 扫描中…大存储请耐心等候
+            </div>
+          ) : results ? (
+            <>
+              <div>
+                <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-2">大文件 Top {results.bigFiles.length}</div>
+                <div className="space-y-1">
+                  {results.bigFiles.map((f) => (
+                    <button key={f.key} onClick={() => { onNavigate(f.key); onClose(); }} className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                      <span className="text-zinc-400 shrink-0">{(() => { const Ic = fileTypeIcon(getFileType(f.name)); return <Ic className="h-4 w-4" />; })()}</span>
+                      <span className="truncate flex-1 text-sm text-zinc-700 dark:text-zinc-200">{f.name}</span>
+                      <span className="text-xs text-zinc-400 tabular-nums shrink-0">{formatBytes(f.size)}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-zinc-900 dark:text-zinc-100 mb-2">潜在重复 · {results.duplicates.length} 组（按完全相同大小聚类，&gt;1MB）</div>
+                {results.duplicates.length === 0 ? (
+                  <div className="text-xs text-zinc-400">未发现潜在重复</div>
+                ) : (
+                  <div className="space-y-2">
+                    {results.duplicates.map((g, i) => (
+                      <div key={i} className="rounded border border-zinc-200 dark:border-zinc-700 p-2">
+                        <div className="text-xs text-zinc-500 mb-1 font-mono">{formatBytes(g.size)} × {g.files.length} 个</div>
+                        {g.files.map((f) => (
+                          <button key={f.key} onClick={() => { onNavigate(f.key); onClose(); }} className="flex items-center gap-2 w-full text-left px-1 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800">
+                            <span className="truncate flex-1 text-xs text-zinc-700 dark:text-zinc-300">{f.key}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          ) : null}
+        </div>
+        <div className="px-4 py-3 border-t border-zinc-200 dark:border-zinc-700 shrink-0">
+          <button onClick={onClose} className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm transition rounded">关闭</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface ReleaseItem {
   version: string;
   name: string;
@@ -1908,6 +1965,8 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [cmdOpen, setCmdOpen] = useState(false);
   const [cmdQuery, setCmdQuery] = useState("");
   const [cmdIndex, setCmdIndex] = useState(0);
+  const [scanResults, setScanResults] = useState<{ bigFiles: S3Object[]; duplicates: Array<{ size: number; files: S3Object[] }> } | null>(null);
+  const [scanning, setScanning] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [renameTarget, setRenameTarget] = useState<S3Object | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -2353,6 +2412,49 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     } finally {
       setCalcSizeKey(null);
     }
+  };
+
+  // 存储扫描：递归收集所有文件，找大文件 Top + 按大小聚类的潜在重复
+  const scanStorage = async () => {
+    setScanning(true);
+    setScanResults(null);
+    const all: S3Object[] = [];
+    const queue = [""];
+    const visited = new Set<string>();
+    let dirs = 0;
+    try {
+      while (queue.length > 0 && dirs < 2000) {
+        const prefix = queue.shift()!;
+        if (visited.has(prefix)) continue;
+        visited.add(prefix);
+        dirs++;
+        const res = await fetch(`/api/files/${storage.id}/${prefix}?action=list`);
+        if (!res.ok) continue;
+        const data = (await res.json()) as { objects?: S3Object[] };
+        for (const obj of data.objects || []) {
+          if (obj.isDirectory) queue.push(obj.key);
+          else all.push(obj);
+        }
+      }
+      const bigFiles = [...all].sort((a, b) => b.size - a.size).slice(0, 20);
+      const bySize = new Map<number, S3Object[]>();
+      for (const f of all) {
+        if (f.size < 1024 * 1024) continue;
+        const arr = bySize.get(f.size);
+        if (arr) arr.push(f);
+        else bySize.set(f.size, [f]);
+      }
+      const duplicates = Array.from(bySize.values()).filter((g) => g.length > 1).map((g) => ({ size: g[0].size, files: g })).sort((a, b) => b.size - a.size).slice(0, 20);
+      setScanResults({ bigFiles, duplicates });
+    } catch {
+      alert("扫描失败");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const navigateToParent = (key: string) => {
+    navigateTo(key.includes("/") ? key.slice(0, key.lastIndexOf("/")) : "");
   };
 
   // 全局搜索：从根 BFS 递归列目录，匹配文件名（限流防大存储卡死）
@@ -2820,6 +2922,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     { id: "up", label: "返回上级目录", icon: ArrowLeft, action: goUp, disabled: !path },
     { id: "globalsearch", label: "全局搜索文件", icon: Globe, action: () => setGlobalSearch(true) },
     { id: "favorites", label: "打开收藏夹", icon: Star, action: () => setFavOpen(true) },
+    { id: "scan", label: "扫描大文件 / 查找重复", icon: Calculator, action: scanStorage },
   ];
   const cmdQ = cmdQuery.trim().toLowerCase();
   const cmdCommands = allCommands.filter((c) => (!c.admin || isAdmin) && (!cmdQ || c.label.toLowerCase().includes(cmdQ)));
@@ -3684,6 +3787,10 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
             </div>
           </div>
         </div>
+      )}
+
+      {(scanning || scanResults) && (
+        <ScanModal results={scanResults} scanning={scanning} onNavigate={navigateToParent} onClose={() => { setScanResults(null); setScanning(false); }} />
       )}
     </div>
   );
