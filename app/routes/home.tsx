@@ -1,7 +1,7 @@
 import type { Route } from "./+types/home";
 import { requireAuth } from "~/lib/auth";
 import { getAllStorages, getPublicStorages, initDatabase } from "~/lib/storage";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { FilePreview } from "~/components/FilePreview";
 import { getFileType, isPreviewable } from "~/lib/file-utils";
 import { marked } from "marked";
@@ -1965,6 +1965,8 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [cmdOpen, setCmdOpen] = useState(false);
   const [cmdQuery, setCmdQuery] = useState("");
   const [cmdIndex, setCmdIndex] = useState(0);
+  const [cursor, setCursor] = useState<number>(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [scanResults, setScanResults] = useState<{ bigFiles: S3Object[]; duplicates: Array<{ size: number; files: S3Object[] }> } | null>(null);
   const [scanning, setScanning] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1996,6 +1998,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   useEffect(() => {
     loadFiles();
     setSelectedKeys(new Set()); // Clear selection on path change
+    setCursor(-1);
   }, [storage.id, path]);
 
   // 目录 README.md 自动展示
@@ -2957,6 +2960,39 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     : objects;
   const allVisibleSelected = visibleObjects.length > 0 && visibleObjects.every((obj) => selectedKeys.has(obj.key));
 
+  // 键盘流：j/k 选行 h 上级 g 根目录 r 刷新 / 搜索 Esc 取消选中（输入框聚焦时不拦截）
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || (e.target as HTMLElement)?.isContentEditable) return;
+      const k = e.key.toLowerCase();
+      if (k === "j" || k === "k") {
+        e.preventDefault();
+        setCursor((c) => {
+          const n = visibleObjects.length;
+          if (n === 0) return -1;
+          if (k === "j") return c >= n - 1 ? 0 : c + 1;
+          return c <= 0 ? n - 1 : c - 1;
+        });
+      } else if (k === "enter") {
+        const obj = visibleObjects[cursor];
+        if (obj) {
+          e.preventDefault();
+          if (obj.isDirectory) navigateTo(obj.key);
+          else if (isPreviewable(obj.name)) handlePreview(obj);
+          else downloadFile(obj.key);
+        }
+      } else if (k === "h") { e.preventDefault(); goUp(); }
+      else if (k === "g") { e.preventDefault(); navigateTo(""); }
+      else if (k === "r") { e.preventDefault(); loadFiles(); }
+      else if (k === "/") { e.preventDefault(); searchInputRef.current?.focus(); }
+      else if (k === "escape") { setCursor(-1); setSelectedKeys(new Set()); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleObjects, cursor]);
+
   // Get previewable files for navigation
   const previewableFiles = visibleObjects.filter((obj) => !obj.isDirectory && isPreviewable(obj.name));
   const currentPreviewIndex = previewFile ? previewableFiles.findIndex((f) => f.key === previewFile.key) : -1;
@@ -3016,6 +3052,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           <div className="relative">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-zinc-400" />
             <input
+              ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -3360,14 +3397,14 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
           </div>
         ) : viewMode === "gallery" ? (
           <div className="p-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-            {visibleObjects.map((obj) => {
+            {visibleObjects.map((obj, i) => {
               const isImg = !obj.isDirectory && getFileType(obj.name) === "image";
               const Ic = obj.isDirectory ? null : fileTypeIcon(getFileType(obj.name));
               return (
                 <div
                   key={obj.key}
                   onClick={() => (obj.isDirectory ? navigateTo(obj.key) : isPreviewable(obj.name) ? handlePreview(obj) : downloadFile(obj.key))}
-                  className={`group relative cursor-pointer rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm transition ${selectedKeys.has(obj.key) ? "ring-2 ring-blue-500" : ""}`}
+                  className={`group relative cursor-pointer rounded-lg border border-zinc-200 dark:border-zinc-800 overflow-hidden hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-sm transition ${selectedKeys.has(obj.key) ? "ring-2 ring-blue-500" : ""} ${cursor === i ? "ring-2 ring-blue-500" : ""}`}
                 >
                   <div className="aspect-square flex items-center justify-center bg-zinc-50 dark:bg-zinc-800/50 overflow-hidden">
                     {isImg ? (
@@ -3416,12 +3453,12 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                     没有匹配的文件
                   </td>
                 </tr>
-              ) : visibleObjects.map((obj) => (
+              ) : visibleObjects.map((obj, i) => (
                 <tr
                   key={obj.key}
                   className={`border-b border-zinc-100 dark:border-zinc-800/50 hover:bg-zinc-100/70 dark:hover:bg-zinc-800/40 ${
                     selectedKeys.has(obj.key) ? "bg-blue-50 dark:bg-blue-900/20" : ""
-                  }`}
+                  } ${cursor === i ? "outline outline-2 -outline-offset-2 outline-blue-500" : ""}`}
                   onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, obj }); }}
                 >
                   {isAdmin && (
