@@ -38,7 +38,14 @@ export function FilePreview({
   const fileType = getFileType(fileName);
   const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [autoPlay, setAutoPlay] = useState(false);
   useEffect(() => { setMediaInfo(null); }, [fileKey]);
+  // 图片幻灯片自动轮播
+  useEffect(() => {
+    if (!autoPlay || fileType !== "image" || !hasNext || !onNext) return;
+    const t = setInterval(() => onNext(), 3500);
+    return () => clearInterval(t);
+  }, [autoPlay, fileType, hasNext, onNext]);
   const inlineFileUrl = `/api/files/${storageId}/${fileKey}`;
   const queryParams = [
     shareToken ? `token=${encodeURIComponent(shareToken)}` : "",
@@ -115,6 +122,17 @@ export function FilePreview({
                 打开原图
               </a>
             </>
+          )}
+          {fileType === "image" && (
+            <button
+              onClick={() => setAutoPlay((a) => !a)}
+              disabled={!hasNext && !autoPlay}
+              className="inline-flex items-center gap-1.5 text-zinc-300 hover:text-white text-sm px-3 py-1.5 border border-zinc-700 hover:border-zinc-500 rounded-md transition disabled:opacity-40 disabled:pointer-events-none"
+              title={autoPlay ? "暂停轮播" : "自动播放（幻灯片，3.5 秒一张）"}
+            >
+              {autoPlay ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {autoPlay ? "暂停" : "播放"}
+            </button>
           )}
           {(fileType === "image" || fileType === "video" || fileType === "audio") && (
             <button
