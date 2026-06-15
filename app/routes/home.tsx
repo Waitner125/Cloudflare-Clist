@@ -1905,6 +1905,9 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const [calcSizeKey, setCalcSizeKey] = useState<string | null>(null);
   const [folderStats, setFolderStats] = useState<{ name: string; stats: StorageStats } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; obj: S3Object } | null>(null);
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [cmdQuery, setCmdQuery] = useState("");
+  const [cmdIndex, setCmdIndex] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [renameTarget, setRenameTarget] = useState<S3Object | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -2439,6 +2442,20 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canUpload, path, storage.id, storage.type, chunkSizeMB]);
 
+  // ⌘K / Ctrl+K 命令面板
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((o) => !o);
+        setCmdQuery("");
+        setCmdIndex(0);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const uploadSingle = async (file: File, uploadPath: string) => {
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -2793,6 +2810,45 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const globalMode = globalSearch && searchQuery.trim().length > 0;
+
+  // 命令面板：命令 + 当前目录文件 + 收藏，模糊匹配
+  const allCommands: Array<{ id: string; label: string; icon: React.ComponentType<{ className?: string }>; action: () => void; admin?: boolean; disabled?: boolean }> = [
+    { id: "refresh", label: "刷新文件列表", icon: RefreshCw, action: loadFiles },
+    { id: "newfolder", label: "新建文件夹", icon: FolderPlus, action: () => setShowNewFolderInput(true), admin: true },
+    { id: "gallery", label: viewMode === "list" ? "切换到网格视图" : "切换到列表视图", icon: LayoutGrid, action: () => setViewMode((v) => (v === "list" ? "gallery" : "list")) },
+    { id: "root", label: "回到根目录", icon: Folder, action: () => navigateTo("") },
+    { id: "up", label: "返回上级目录", icon: ArrowLeft, action: goUp, disabled: !path },
+    { id: "globalsearch", label: "全局搜索文件", icon: Globe, action: () => setGlobalSearch(true) },
+    { id: "favorites", label: "打开收藏夹", icon: Star, action: () => setFavOpen(true) },
+  ];
+  const cmdQ = cmdQuery.trim().toLowerCase();
+  const cmdCommands = allCommands.filter((c) => (!c.admin || isAdmin) && (!cmdQ || c.label.toLowerCase().includes(cmdQ)));
+  const cmdFiles = cmdQ ? objects.filter((o) => o.name.toLowerCase().includes(cmdQ)).slice(0, 6) : [];
+  const cmdFavs = cmdQ ? favorites.filter((f) => f.storageId === storage.id && f.name.toLowerCase().includes(cmdQ)).slice(0, 4) : [];
+  type CmdItem =
+    | { kind: "cmd"; id: string; label: string; icon: React.ComponentType<{ className?: string }>; action: () => void; disabled?: boolean }
+    | { kind: "file"; obj: S3Object }
+    | { kind: "fav"; fav: { key: string; name: string; isDirectory: boolean } };
+  const flatCmdItems: CmdItem[] = [
+    ...cmdCommands.map((c) => ({ kind: "cmd" as const, id: c.id, label: c.label, icon: c.icon, action: c.action, disabled: c.disabled })),
+    ...cmdFiles.map((o) => ({ kind: "file" as const, obj: o })),
+    ...cmdFavs.map((f) => ({ kind: "fav" as const, fav: { key: f.key, name: f.name, isDirectory: f.isDirectory } })),
+  ];
+  const execCmdItem = (item: CmdItem) => {
+    setCmdOpen(false);
+    setCmdQuery("");
+    if (item.kind === "cmd") {
+      if (!item.disabled) item.action();
+    } else if (item.kind === "file") {
+      const o = item.obj;
+      if (o.isDirectory) navigateTo(o.key);
+      else if (isPreviewable(o.name)) handlePreview(o);
+      else downloadFile(o.key);
+    } else {
+      const f = item.fav;
+      navigateTo(f.isDirectory ? f.key : (f.key.includes("/") ? f.key.slice(0, f.key.lastIndexOf("/")) : ""));
+    }
+  };
   const visibleObjects = normalizedQuery
     ? objects.filter((obj) => obj.name.toLowerCase().includes(normalizedQuery))
     : objects;
@@ -3576,6 +3632,58 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
       {/* Folder Stats Modal */}
       {folderStats && (
         <FolderStatsModal name={folderStats.name} stats={folderStats.stats} onClose={() => setFolderStats(null)} />
+      )}
+
+      {/* ⌘K Command Palette */}
+      {cmdOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-sm flex items-start justify-center pt-[12vh] p-4" onClick={() => setCmdOpen(false)}>
+          <div className="w-full max-w-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2 px-4 border-b border-zinc-200 dark:border-zinc-700">
+              <Search className="h-4 w-4 text-zinc-400 shrink-0" />
+              <input
+                autoFocus
+                value={cmdQuery}
+                onChange={(e) => { setCmdQuery(e.target.value); setCmdIndex(0); }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowDown") { e.preventDefault(); setCmdIndex((i) => Math.min(i + 1, flatCmdItems.length - 1)); }
+                  else if (e.key === "ArrowUp") { e.preventDefault(); setCmdIndex((i) => Math.max(i - 1, 0)); }
+                  else if (e.key === "Enter") { e.preventDefault(); if (flatCmdItems[cmdIndex]) execCmdItem(flatCmdItems[cmdIndex]); }
+                  else if (e.key === "Escape") { setCmdOpen(false); }
+                }}
+                placeholder="搜索文件或命令…"
+                className="w-full py-3 bg-transparent text-sm text-zinc-900 dark:text-zinc-100 placeholder:text-zinc-400 outline-none"
+              />
+              <kbd className="text-[10px] text-zinc-400 border border-zinc-200 dark:border-zinc-700 rounded px-1.5 py-0.5">ESC</kbd>
+            </div>
+            <div className="max-h-[50vh] overflow-y-auto py-1">
+              {flatCmdItems.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-zinc-400">无匹配结果</div>
+              ) : flatCmdItems.map((item, i) => {
+                const Icon = item.kind === "cmd" ? item.icon : null;
+                const FileIcon = item.kind === "file" && !item.obj.isDirectory ? fileTypeIcon(getFileType(item.obj.name)) : null;
+                return (
+                  <button
+                    key={i}
+                    onMouseEnter={() => setCmdIndex(i)}
+                    onClick={() => execCmdItem(item)}
+                    className={`flex items-center gap-3 w-full px-4 py-2 text-left text-sm ${i === cmdIndex ? "bg-blue-500/10 text-blue-600 dark:text-blue-300" : "text-zinc-700 dark:text-zinc-200"} ${item.kind === "cmd" && item.disabled ? "opacity-40" : ""}`}
+                  >
+                    {item.kind === "cmd" && Icon ? <Icon className="h-4 w-4 shrink-0" />
+                      : item.kind === "file" ? (item.obj.isDirectory ? <Folder className="h-4 w-4 text-blue-500 shrink-0" /> : FileIcon ? <FileIcon className="h-4 w-4 text-zinc-400 shrink-0" /> : null)
+                      : <Star className="h-4 w-4 text-yellow-500 shrink-0" />}
+                    <span className="truncate flex-1">{item.kind === "cmd" ? item.label : item.kind === "file" ? item.obj.name : item.fav.name}</span>
+                    {item.kind === "file" && item.obj.isDirectory && <span className="text-xs text-zinc-400">文件夹</span>}
+                    {item.kind === "fav" && <span className="text-xs text-zinc-400">收藏</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="px-4 py-2 border-t border-zinc-200 dark:border-zinc-700 flex items-center gap-3 text-[11px] text-zinc-400">
+              <span>↑↓ 导航</span><span>↵ 执行</span><span>esc 关闭</span>
+              <span className="ml-auto">⌘K 呼出</span>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
