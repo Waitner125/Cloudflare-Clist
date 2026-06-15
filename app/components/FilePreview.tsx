@@ -19,6 +19,8 @@ interface FilePreviewProps {
   onFileChanged?: () => void;
 }
 
+type MediaInfo = { width?: number; height?: number; duration?: number };
+
 export function FilePreview({
   storageId,
   fileKey,
@@ -34,6 +36,9 @@ export function FilePreview({
   onFileChanged,
 }: FilePreviewProps) {
   const fileType = getFileType(fileName);
+  const [mediaInfo, setMediaInfo] = useState<MediaInfo | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
+  useEffect(() => { setMediaInfo(null); }, [fileKey]);
   const inlineFileUrl = `/api/files/${storageId}/${fileKey}`;
   const queryParams = [
     shareToken ? `token=${encodeURIComponent(shareToken)}` : "",
@@ -111,6 +116,14 @@ export function FilePreview({
               </a>
             </>
           )}
+          {(fileType === "image" || fileType === "video" || fileType === "audio") && (
+            <button
+              onClick={() => setShowInfo((s) => !s)}
+              className={`text-sm font-mono px-3 py-1.5 rounded-md transition border ${showInfo ? "text-white border-zinc-500 bg-white/10" : "text-zinc-400 border-zinc-700 hover:border-zinc-500 hover:text-white"}`}
+            >
+              信息
+            </button>
+          )}
           <a
             href={downloadFileUrl}
             download={fileName}
@@ -135,6 +148,17 @@ export function FilePreview({
         className="flex-1 flex items-center justify-center overflow-hidden relative"
         onClick={(e) => e.stopPropagation()}
       >
+        {showInfo && mediaInfo && (
+          <div className="absolute right-4 top-4 z-20 w-52 bg-black/70 backdrop-blur border border-white/10 rounded-lg p-3 text-xs space-y-1.5" onClick={(e) => e.stopPropagation()}>
+            <div className="text-zinc-400 font-medium mb-1.5">媒体信息</div>
+            {mediaInfo.width && mediaInfo.height ? (
+              <div className="flex justify-between"><span className="text-zinc-400">尺寸</span><span className="text-zinc-100 font-mono">{mediaInfo.width} × {mediaInfo.height}</span></div>
+            ) : null}
+            {mediaInfo.duration != null && mediaInfo.duration > 0 ? (
+              <div className="flex justify-between"><span className="text-zinc-400">时长</span><span className="text-zinc-100 font-mono">{formatDuration(mediaInfo.duration)}</span></div>
+            ) : null}
+          </div>
+        )}
         {/* Navigation arrows */}
         {hasPrev && (
           <button
@@ -155,9 +179,9 @@ export function FilePreview({
 
         {/* Preview content */}
         <div className="w-full h-full flex items-center justify-center p-4">
-          {fileType === "video" && <VideoPlayer url={previewFileUrlWithToken} />}
-          {fileType === "audio" && <AudioPlayer url={previewFileUrlWithToken} fileName={fileName} />}
-          {fileType === "image" && <ImageViewer url={previewFileUrlWithToken} fileName={fileName} />}
+          {fileType === "video" && <VideoPlayer url={previewFileUrlWithToken} onInfo={setMediaInfo} />}
+          {fileType === "audio" && <AudioPlayer url={previewFileUrlWithToken} fileName={fileName} onInfo={setMediaInfo} />}
+          {fileType === "image" && <ImageViewer url={previewFileUrlWithToken} fileName={fileName} onInfo={setMediaInfo} />}
           {fileType === "text" && (
             <TextViewer url={previewFileUrlWithToken} fileName={fileName} canEdit={canEdit} uploadUrl={uploadUrl} onFileChanged={onFileChanged} />
           )}
@@ -286,7 +310,7 @@ function useFileEditor(opts: {
 }
 
 // Video Player Component
-function VideoPlayer({ url }: { url: string }) {
+function VideoPlayer({ url, onInfo }: { url: string; onInfo?: (info: MediaInfo) => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -328,6 +352,7 @@ function VideoPlayer({ url }: { url: string }) {
     if (videoRef.current) {
       setDuration(videoRef.current.duration);
       setIsLoading(false);
+      onInfo?.({ duration: videoRef.current.duration, width: videoRef.current.videoWidth, height: videoRef.current.videoHeight });
     }
   };
 
@@ -619,7 +644,7 @@ function VideoPlayer({ url }: { url: string }) {
 }
 
 // Audio Player Component
-function AudioPlayer({ url, fileName }: { url: string; fileName: string }) {
+function AudioPlayer({ url, fileName, onInfo }: { url: string; fileName: string; onInfo?: (info: MediaInfo) => void }) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -645,6 +670,7 @@ function AudioPlayer({ url, fileName }: { url: string; fileName: string }) {
   const handleLoadedMetadata = () => {
     if (audioRef.current) {
       setDuration(audioRef.current.duration);
+      onInfo?.({ duration: audioRef.current.duration });
     }
   };
 
@@ -735,7 +761,7 @@ function AudioPlayer({ url, fileName }: { url: string; fileName: string }) {
 }
 
 // Image Viewer Component
-function ImageViewer({ url, fileName }: { url: string; fileName: string }) {
+function ImageViewer({ url, fileName, onInfo }: { url: string; fileName: string; onInfo?: (info: MediaInfo) => void }) {
   const [scale, setScale] = useState(1);
   const [loading, setLoading] = useState(true);
 
@@ -765,7 +791,7 @@ function ImageViewer({ url, fileName }: { url: string; fileName: string }) {
           alt={fileName}
           className="transition-transform"
           style={{ transform: `scale(${scale})`, display: loading ? 'none' : 'block' }}
-          onLoad={() => setLoading(false)}
+          onLoad={(e) => { setLoading(false); onInfo?.({ width: e.currentTarget.naturalWidth, height: e.currentTarget.naturalHeight }); }}
         />
       </div>
     </div>
