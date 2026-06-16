@@ -4,6 +4,7 @@ import { getAllStorages, getPublicStorages, initDatabase } from "~/lib/storage";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { FilePreview } from "~/components/FilePreview";
 import { getFileType, isPreviewable } from "~/lib/file-utils";
+import { apiFileUrl } from "~/lib/api-path";
 import { marked } from "marked";
 import {
   X, Plus, Search, Sun, Moon, SlidersHorizontal, LogIn, LogOut, ShieldCheck, Cloud,
@@ -2010,7 +2011,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/files/${storage.id}/${f.key}?action=download`);
+        const res = await fetch(`${apiFileUrl(storage.id, f.key)}?action=download`);
         if (!res.ok) return;
         const text = await res.text();
         marked.setOptions({ gfm: true, breaks: true });
@@ -2028,7 +2029,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     setError("");
 
     try {
-      const res = await fetch(`/api/files/${storage.id}/${path}?action=list`);
+      const res = await fetch(`${apiFileUrl(storage.id, path)}?action=list`);
       if (res.ok) {
         const data = (await res.json()) as { objects?: S3Object[] };
         setObjects(data.objects || []);
@@ -2054,13 +2055,13 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   };
 
   const downloadFile = (key: string) => {
-    window.open(`/api/files/${storage.id}/${key}?action=download`, "_blank");
+    window.open(`${apiFileUrl(storage.id, key)}?action=download`, "_blank");
   };
 
   const deleteFile = async (key: string) => {
     if (!confirm(`确定删除 ${key}?`)) return;
     try {
-      const res = await fetch(`/api/files/${storage.id}/${key}`, { method: "DELETE" });
+      const res = await fetch(apiFileUrl(storage.id, key), { method: "DELETE" });
       if (res.ok) {
         loadFiles();
       } else {
@@ -2075,7 +2076,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
   const deleteFolder = async (key: string, name: string) => {
     if (!confirm(`确定删除文件夹 "${name}" 及其所有内容?`)) return;
     try {
-      const res = await fetch(`/api/files/${storage.id}/${key}?action=rmdir`, { method: "DELETE" });
+      const res = await fetch(`${apiFileUrl(storage.id, key)}?action=rmdir`, { method: "DELETE" });
       if (res.ok) {
         loadFiles();
       } else {
@@ -2106,7 +2107,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     setRenaming(true);
     try {
       const key = renameTarget.isDirectory ? renameTarget.key : renameTarget.key;
-      const res = await fetch(`/api/files/${storage.id}/${key}?action=rename`, {
+      const res = await fetch(`${apiFileUrl(storage.id, key)}?action=rename`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ newName: renameValue.trim() }),
@@ -2129,7 +2130,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     const folders: string[] = [""];
     const listRecursive = async (prefix: string) => {
       try {
-        const res = await fetch(`/api/files/${storage.id}/${prefix}?action=list`);
+        const res = await fetch(`${apiFileUrl(storage.id, prefix)}?action=list`);
         if (res.ok) {
           const data = (await res.json()) as { objects?: S3Object[] };
           for (const obj of data.objects || []) {
@@ -2159,7 +2160,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     setMoving(true);
     try {
       const key = moveTarget.isDirectory ? moveTarget.key : moveTarget.key;
-      const res = await fetch(`/api/files/${storage.id}/${key}?action=move`, {
+      const res = await fetch(`${apiFileUrl(storage.id, key)}?action=move`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ destPath: moveDestPath }),
@@ -2290,7 +2291,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
       // Delete folders first (recursive)
       for (const folder of folders) {
         try {
-          const res = await fetch(`/api/files/${storage.id}/${folder.key}?action=rmdir`, { method: "DELETE" });
+          const res = await fetch(`${apiFileUrl(storage.id, folder.key)}?action=rmdir`, { method: "DELETE" });
           if (!res.ok) failed++;
         } catch {
           failed++;
@@ -2300,7 +2301,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
       // Delete files
       for (const file of files) {
         try {
-          const res = await fetch(`/api/files/${storage.id}/${file.key}`, { method: "DELETE" });
+          const res = await fetch(apiFileUrl(storage.id, file.key), { method: "DELETE" });
           if (!res.ok) failed++;
         } catch {
           failed++;
@@ -2332,7 +2333,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     try {
       for (const key of selectedKeys) {
         try {
-          const res = await fetch(`/api/files/${storage.id}/${key}?action=move`, {
+          const res = await fetch(`${apiFileUrl(storage.id, key)}?action=move`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ destPath: batchMoveDest }),
@@ -2363,7 +2364,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     }
     // 间隔触发，避免浏览器拦截多窗口
     files.forEach((f, i) => {
-      setTimeout(() => window.open(`/api/files/${storage.id}/${f.key}?action=download`, "_blank"), i * 400);
+      setTimeout(() => window.open(`${apiFileUrl(storage.id, f.key)}?action=download`, "_blank"), i * 400);
     });
   };
 
@@ -2393,7 +2394,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
         if (visited.has(prefix)) continue;
         visited.add(prefix);
         dirs++;
-        const res = await fetch(`/api/files/${storage.id}/${prefix}?action=list`);
+        const res = await fetch(`${apiFileUrl(storage.id, prefix)}?action=list`);
         if (!res.ok) continue;
         const data = (await res.json()) as { objects?: S3Object[] };
         for (const obj of data.objects || []) {
@@ -2431,7 +2432,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
         if (visited.has(prefix)) continue;
         visited.add(prefix);
         dirs++;
-        const res = await fetch(`/api/files/${storage.id}/${prefix}?action=list`);
+        const res = await fetch(`${apiFileUrl(storage.id, prefix)}?action=list`);
         if (!res.ok) continue;
         const data = (await res.json()) as { objects?: S3Object[] };
         for (const obj of data.objects || []) {
@@ -2478,7 +2479,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
         visited.add(prefix);
         dirs++;
         try {
-          const res = await fetch(`/api/files/${storage.id}/${prefix}?action=list`);
+          const res = await fetch(`${apiFileUrl(storage.id, prefix)}?action=list`);
           if (!res.ok) continue;
           const data = (await res.json()) as { objects?: S3Object[] };
           for (const obj of data.objects || []) {
@@ -2587,7 +2588,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
 
       xhr.onerror = () => reject(new Error("网络错误"));
 
-      xhr.open("PUT", `/api/files/${storage.id}/${uploadPath}`);
+      xhr.open("PUT", apiFileUrl(storage.id, uploadPath));
       xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
       xhr.send(file);
     });
@@ -2618,7 +2619,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
             useDirectUpload = parsed.useDirectUpload ?? true;
           } else {
             try {
-              await fetch(`/api/files/${storage.id}/${uploadPath}?action=multipart-abort`, {
+              await fetch(`${apiFileUrl(storage.id, uploadPath)}?action=multipart-abort`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ uploadId: parsed.uploadId }),
@@ -2634,7 +2635,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     if (!uploadId!) {
       setUploadProgress({ name: file.name, progress: 0, currentPart: 0, totalParts, speed: 0, loaded: 0, total: file.size });
 
-      const initRes = await fetch(`/api/files/${storage.id}/${uploadPath}?action=multipart-init`, {
+      const initRes = await fetch(`${apiFileUrl(storage.id, uploadPath)}?action=multipart-init`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ contentType, size: file.size, chunkSize }),
@@ -2687,7 +2688,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
       let signedUrls: Record<number, string> = {};
       if (useDirectUpload) {
         try {
-          const urlsRes = await fetch(`/api/files/${storage.id}/${uploadPath}?action=multipart-urls`, {
+          const urlsRes = await fetch(`${apiFileUrl(storage.id, uploadPath)}?action=multipart-urls`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ uploadId, partNumbers: remainingParts }),
@@ -2800,7 +2801,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
             reject(new Error(`网络错误: 分片 ${partNumber}`));
           };
 
-          const url = `/api/files/${storage.id}/${path}?action=multipart-upload&uploadId=${encodeURIComponent(upId)}&partNumber=${partNumber}`;
+          const url = `${apiFileUrl(storage.id, path)}?action=multipart-upload&uploadId=${encodeURIComponent(upId)}&partNumber=${partNumber}`;
           xhr.open("PUT", url);
           xhr.send(chunk);
         });
@@ -2836,7 +2837,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
       await Promise.all(workers);
 
       // Complete multipart upload
-      const completeRes = await fetch(`/api/files/${storage.id}/${uploadPath}?action=multipart-complete`, {
+      const completeRes = await fetch(`${apiFileUrl(storage.id, uploadPath)}?action=multipart-complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ uploadId, parts: completedParts }),
@@ -2859,7 +2860,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
     setCreatingFolder(true);
     try {
       const folderPath = path ? `${path}/${newFolderName.trim()}` : newFolderName.trim();
-      const res = await fetch(`/api/files/${storage.id}/${folderPath}?action=mkdir`, {
+      const res = await fetch(`${apiFileUrl(storage.id, folderPath)}?action=mkdir`, {
         method: "POST",
       });
 
@@ -2883,7 +2884,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
 
     setOfflineDownloading(true);
     try {
-      const res = await fetch(`/api/files/${storage.id}/${path}?action=fetch`, {
+      const res = await fetch(`${apiFileUrl(storage.id, path)}?action=fetch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -3408,7 +3409,7 @@ function FileBrowser({ storage, isAdmin, isDark, chunkSizeMB }: { storage: Stora
                 >
                   <div className="aspect-square flex items-center justify-center bg-zinc-50 dark:bg-zinc-800/50 overflow-hidden">
                     {isImg ? (
-                      <img src={`/api/files/${storage.id}/${obj.key}`} alt={obj.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                      <img src={apiFileUrl(storage.id, obj.key)} alt={obj.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition" />
                     ) : obj.isDirectory ? (
                       <Folder className="h-10 w-10 text-blue-500" />
                     ) : Ic ? (

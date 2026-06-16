@@ -48,11 +48,26 @@ function toHex(buffer: ArrayBuffer): string {
     .join("");
 }
 
+// AWS SigV4 URI encoding is stricter than encodeURIComponent: ! ' ( ) *
+// must also be percent-encoded in canonical URI/query strings.
+function encodeAwsUriComponent(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (char) =>
+    `%${char.charCodeAt(0).toString(16).toUpperCase()}`
+  );
+}
+
+function buildCanonicalQueryString(queryParams: Record<string, string>): string {
+  return Object.keys(queryParams)
+    .sort()
+    .map((key) => `${encodeAwsUriComponent(key)}=${encodeAwsUriComponent(queryParams[key])}`)
+    .join("&");
+}
+
 // S3 URI encoding - encode each path segment (same for signature and URL)
 function encodeS3Path(path: string): string {
   return path
     .split("/")
-    .map((segment) => encodeURIComponent(segment))
+    .map((segment) => encodeAwsUriComponent(segment))
     .join("/");
 }
 
@@ -113,10 +128,7 @@ export class S3Client {
       .join("\n");
     const signedHeadersStr = sortedHeaderKeys.map((k) => k.toLowerCase()).join(";");
 
-    const sortedQueryKeys = Object.keys(queryParams).sort();
-    const canonicalQueryString = sortedQueryKeys
-      .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`)
-      .join("&");
+    const canonicalQueryString = buildCanonicalQueryString(queryParams);
 
     const rawCanonicalUri = path.startsWith("/") ? path : "/" + path;
     const canonicalUri = encodeS3Path(rawCanonicalUri);
@@ -184,9 +196,7 @@ export class S3Client {
 
     const headers = await this.signRequest("GET", path, queryParams);
 
-    const queryString = Object.entries(queryParams)
-      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-      .join("&");
+    const queryString = buildCanonicalQueryString(queryParams);
 
     const response = await fetch(`${this.config.endpoint}${path}?${queryString}`, {
       method: "GET",
@@ -335,10 +345,7 @@ export class S3Client {
       "X-Amz-SignedHeaders": "host",
     };
 
-    const sortedQueryKeys = Object.keys(queryParams).sort();
-    const canonicalQueryString = sortedQueryKeys
-      .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`)
-      .join("&");
+    const canonicalQueryString = buildCanonicalQueryString(queryParams);
 
     const canonicalRequest = [
       "GET",
@@ -394,10 +401,7 @@ export class S3Client {
       "uploadId": uploadId,
     };
 
-    const sortedQueryKeys = Object.keys(queryParams).sort();
-    const canonicalQueryString = sortedQueryKeys
-      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k])}`)
-      .join("&");
+    const canonicalQueryString = buildCanonicalQueryString(queryParams);
 
     const canonicalRequest = [
       "PUT",
@@ -482,7 +486,7 @@ export class S3Client {
     // x-amz-copy-source must be URL encoded
     const copySource = `/${this.config.bucket}/${fullSourceKey}`
       .split("/")
-      .map((segment) => encodeURIComponent(segment))
+      .map((segment) => encodeAwsUriComponent(segment))
       .join("/");
 
     const headers = await this.signRequest("PUT", path, {}, {
@@ -591,10 +595,7 @@ export class S3Client {
     const headers = await this.signRequest("PUT", path, queryParams, {}, "", true);
 
     // Build query string in same sorted order as signature
-    const sortedKeys = Object.keys(queryParams).sort();
-    const queryString = sortedKeys
-      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k])}`)
-      .join("&");
+    const queryString = buildCanonicalQueryString(queryParams);
 
     const fetchHeaders: Record<string, string> = { ...headers };
     if (contentLength !== undefined) {
@@ -645,10 +646,7 @@ export class S3Client {
     }, body);
 
     // Build query string in same sorted order as signature
-    const sortedKeys = Object.keys(queryParams).sort();
-    const queryString = sortedKeys
-      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k])}`)
-      .join("&");
+    const queryString = buildCanonicalQueryString(queryParams);
 
     const response = await fetch(
       `${this.config.endpoint}${encodedPath}?${queryString}`,
@@ -677,10 +675,7 @@ export class S3Client {
     const headers = await this.signRequest("DELETE", path, queryParams);
 
     // Build query string in same sorted order as signature
-    const sortedKeys = Object.keys(queryParams).sort();
-    const queryString = sortedKeys
-      .map((k) => `${encodeURIComponent(k)}=${encodeURIComponent(queryParams[k])}`)
-      .join("&");
+    const queryString = buildCanonicalQueryString(queryParams);
 
     const response = await fetch(
       `${this.config.endpoint}${encodedPath}?${queryString}`,

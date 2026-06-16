@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { getFileType, formatDuration, getCodeLanguage, getMimeType, type FileType } from "~/lib/file-utils";
+import { apiFileUrl } from "~/lib/api-path";
 import hljs from "highlight.js";
 import { marked } from "marked";
 import { X, Download, Play, Pause, RefreshCw, AlertCircle, Pencil, Check } from "~/components/icons";
@@ -46,7 +47,7 @@ export function FilePreview({
     const t = setInterval(() => onNext(), 3500);
     return () => clearInterval(t);
   }, [autoPlay, fileType, hasNext, onNext]);
-  const inlineFileUrl = `/api/files/${storageId}/${fileKey}`;
+  const inlineFileUrl = apiFileUrl(storageId, fileKey);
   const queryParams = [
     shareToken ? `token=${encodeURIComponent(shareToken)}` : "",
     password ? `password=${encodeURIComponent(password)}` : "",

@@ -15,6 +15,7 @@ import { useState, useEffect } from "react";
 import { FilePreview } from "~/components/FilePreview";
 import { Folder, Download, Link as LinkIcon, Clock, AlertCircle, ChevronRight, Play, Lock, fileTypeIcon } from "~/components/icons";
 import { getFileType } from "~/lib/file-utils";
+import { apiFileUrl } from "~/lib/api-path";
 
 interface S3Object {
   key: string;
@@ -133,7 +134,7 @@ export default function Share({ loaderData }: Route.ComponentProps) {
       const fullPath = path ? `${basePath}/${path}` : basePath;
 
       const res = await fetch(
-        `/api/files/${storage.id}/${fullPath}?action=list&token=${token}${accessPassword ? `&password=${encodeURIComponent(accessPassword)}` : ""}`
+        `${apiFileUrl(storage.id, fullPath)}?action=list&token=${token}${accessPassword ? `&password=${encodeURIComponent(accessPassword)}` : ""}`
       );
 
       if (res.ok) {
@@ -158,7 +159,7 @@ export default function Share({ loaderData }: Route.ComponentProps) {
 
   const downloadFile = (key: string) => {
     window.open(
-      `/api/files/${storage!.id}/${key}?action=download&token=${token}${accessPassword ? `&password=${encodeURIComponent(accessPassword)}` : ""}`,
+      `${apiFileUrl(storage!.id, key)}?action=download&token=${token}${accessPassword ? `&password=${encodeURIComponent(accessPassword)}` : ""}`,
       "_blank"
     );
   };
