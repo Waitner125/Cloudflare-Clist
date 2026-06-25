@@ -1,0 +1,28 @@
+/**
+ * Example Wrangler config used for CI type generation.
+ * Replace with real values in actual deployment config.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "clist",
+  "main": "./workers/app.ts",
+  "compatibility_date": "2025-04-04",
+  "vars": {
+    "VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare",
+    "ADMIN_USERNAME": "admin",
+    "ADMIN_PASSWORD": "Aa258013",
+    "SITE_TITLE": "CList",
+    "SITE_ANNOUNCEMENT": "Welcome to CList storage service!",
+    "CHUNK_SIZE_MB": "10",
+    "WEBDAV_ENABLED": "true",
+    "WEBDAV_USERNAME": "admin",
+    "WEBDAV_PASSWORD": "Aa258013"
+  },
+  "d1_databases": [
+    {
+      "binding": "clist",
+      "database_name": "clist",
+      "database_id": "12e65588-ceb4-4239-a540-098d5ad4f6a1"
+    }
+  ]
+}
