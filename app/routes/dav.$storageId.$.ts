@@ -1,7 +1,6 @@
 import type { Route } from "./+types/dav.$storageId.$";
 import { getStorageById, getAllStorages, initDatabase } from "~/lib/storage";
 import { createStorageClient, withClientState, moveOrCopyDelete } from "~/lib/client-factory";
-import { getWebdavConfig, verifyWebdavPassword } from "~/lib/webdav-config";
 
 // WebDAV server endpoint - provides WebDAV access to storages
 
@@ -116,15 +115,14 @@ function getContentType(filename: string): string {
 
 /**
  * 从 WebDAV Destination 头解析出本存储内的目标路径。
- * - 只接受与当前请求同源、且路径前缀与本存储 (`/{prefix}/{storageId}/`) 一致的地址，
+ * - 只接受与当前请求同源、且路径前缀与本存储 (`/dav/{storageId}/`) 一致的地址，
  *   防止跨存储 / 绝对路径逃离当前存储。
  * - 返回的目标路径不含前导斜杠（与 CList 内部 key 约定一致）。
  */
 function parseDavDestination(
   destinationHeader: string,
   request: Request,
-  storageId: number,
-  pathPrefix: string
+  storageId: number
 ): string | null {
   let destUrl: URL;
   try {
@@ -139,10 +137,9 @@ function parseDavDestination(
     return null;
   }
 
-  const p = (pathPrefix || "dav").replace(/^\/+|\/+$/g, "");
-  const prefix = `/${p}/${storageId}/`;
+  const prefix = `/dav/${storageId}/`;
   if (!destUrl.pathname.startsWith(prefix)) {
-    // 若目标不是当前存储的 URL（例如 /其他id/ 或根路径），拒绝
+    // 若目标不是当前存储的 URL（例如 /dav/其他id/ 或根路径），拒绝
     return null;
   }
 
@@ -152,10 +149,10 @@ function parseDavDestination(
   return destPath || null;
 }
 
-// Validate Basic Auth credentials (基于 DB 中 WebDAV 服务配置，非环境变量)
+// Validate Basic Auth credentials
 async function validateWebdavAuth(
-  db: D1Database,
-  request: Request
+  request: Request,
+  env: { WEBDAV_USERNAME?: string; WEBDAV_PASSWORD?: string; ADMIN_USERNAME?: string; ADMIN_PASSWORD?: string }
 ): Promise<boolean> {
   const authHeader = request.headers.get("Authorization");
   if (!authHeader || !authHeader.startsWith("Basic ")) {
@@ -166,16 +163,20 @@ async function validateWebdavAuth(
     const credentials = atob(authHeader.slice(6));
     const [username, password] = credentials.split(":");
 
-    const config = await getWebdavConfig(db);
-
-    // 若配置了自定义 WebDAV 用户名 + 密码哈希，则校验之
-    if (config.username) {
-      if (username !== config.username) return false;
-      return await verifyWebdavPassword(password, config.passwordHash);
+    // 优先用独立的 WebDAV 凭据；若未单独配置则回退到明确配置的 ADMIN 凭据。
+    // 任何回退都必须是“显式配置”的值——绝不回退到硬编码弱口令。
+    const webdavUsername = env.WEBDAV_USERNAME?.trim();
+    const webdavPassword = env.WEBDAV_PASSWORD?.trim();
+    if (webdavUsername && webdavPassword) {
+      return username === webdavUsername && password === webdavPassword;
     }
-
-    // 未配置自定义用户名时，需有密码哈希才允许认证（无哈希则拒绝）
-    return await verifyWebdavPassword(password, config.passwordHash);
+    const adminUsername = env.ADMIN_USERNAME?.trim();
+    const adminPassword = env.ADMIN_PASSWORD?.trim();
+    if (adminUsername && adminPassword) {
+      return username === adminUsername && password === adminPassword;
+    }
+    // 没有任何已配置凭据时，拒绝所有请求（fail-closed）
+    return false;
   } catch {
     return false;
   }
@@ -194,7 +195,7 @@ function createUnauthorizedResponse(): Response {
 // Unified WebDAV request handler
 export async function handleWebdavRequest(
   request: Request,
-  params: { storageId?: string; "*"?: string; prefix?: string },
+  params: { storageId?: string; "*"?: string },
   context: any
 ): Promise<Response> {
   const method = request.method.toUpperCase();
@@ -215,24 +216,27 @@ export async function handleWebdavRequest(
   }
 
   const db = context.cloudflare.env.DB;
-
-  await initDatabase(db);
-  // 启用开关与认证、端点前缀均来自 DB 的 WebDAV 服务配置（设置页面自定义）
-  const config = await getWebdavConfig(db);
+  const env = context.cloudflare.env as {
+    WEBDAV_ENABLED?: string;
+    WEBDAV_USERNAME?: string;
+    WEBDAV_PASSWORD?: string;
+    ADMIN_USERNAME?: string;
+    ADMIN_PASSWORD?: string;
+  };
 
   // Check if WebDAV is enabled
-  if (!config.enabled) {
+  if (env.WEBDAV_ENABLED !== "true") {
     return new Response("WebDAV is disabled", { status: 403 });
   }
 
   // Validate authentication
-  const isAuthenticated = await validateWebdavAuth(db, request);
+  const isAuthenticated = await validateWebdavAuth(request, env);
   if (!isAuthenticated) {
     return createUnauthorizedResponse();
   }
 
-  // 端点前缀：优先用请求实际前缀，否则落地配置的前缀
-  const pathPrefix = (params.prefix || config.pathPrefix || "dav").replace(/^\/+|\/+$/g, "");
+  await initDatabase(db);
+
   const storageId = parseInt(params.storageId || "0", 10);
   const path = params["*"] || "";
 
@@ -301,7 +305,7 @@ export async function handleWebdavRequest(
 
   const client = createStorageClient(storage);
   const url = new URL(request.url);
-  const baseUrl = `/${pathPrefix}/${storageId}`;
+  const baseUrl = `/dav/${storageId}`;
 
   // Handle modification methods
   if (["PUT", "DELETE", "MKCOL", "COPY", "MOVE"].includes(method)) {
@@ -353,7 +357,7 @@ export async function handleWebdavRequest(
           return new Response("Destination header required", { status: 400 });
         }
 
-        const destUrlOk = parseDavDestination(destinationHeader, request, storageId, pathPrefix);
+        const destUrlOk = parseDavDestination(destinationHeader, request, storageId);
         if (destUrlOk === null) {
           return new Response("Invalid or unsafe Destination header", { status: 400 });
         }
@@ -375,7 +379,7 @@ export async function handleWebdavRequest(
           return new Response("Destination header required", { status: 400 });
         }
 
-        const destUrlOk2 = parseDavDestination(destinationHeader, request, storageId, pathPrefix);
+        const destUrlOk2 = parseDavDestination(destinationHeader, request, storageId);
         if (destUrlOk2 === null) {
           return new Response("Invalid or unsafe Destination header", { status: 400 });
         }
