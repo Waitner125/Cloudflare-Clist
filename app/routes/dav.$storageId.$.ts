@@ -1,6 +1,7 @@
 import type { Route } from "./+types/dav.$storageId.$";
 import { getStorageById, getAllStorages, initDatabase } from "~/lib/storage";
 import { createStorageClient, withClientState, moveOrCopyDelete } from "~/lib/client-factory";
+import { getWebdavConfig, verifyWebdavPassword } from "~/lib/webdav-config";
 
 // WebDAV server endpoint - provides WebDAV access to storages
 
@@ -149,10 +150,10 @@ function parseDavDestination(
   return destPath || null;
 }
 
-// Validate Basic Auth credentials
+// Validate Basic Auth credentials (基于 D1 中 WebDAV 服务配置，非环境变量)
 async function validateWebdavAuth(
-  request: Request,
-  env: { WEBDAV_USERNAME?: string; WEBDAV_PASSWORD?: string; ADMIN_USERNAME?: string; ADMIN_PASSWORD?: string }
+  db: D1Database,
+  request: Request
 ): Promise<boolean> {
   const authHeader = request.headers.get("Authorization");
   if (!authHeader || !authHeader.startsWith("Basic ")) {
@@ -163,20 +164,16 @@ async function validateWebdavAuth(
     const credentials = atob(authHeader.slice(6));
     const [username, password] = credentials.split(":");
 
-    // 优先用独立的 WebDAV 凭据；若未单独配置则回退到明确配置的 ADMIN 凭据。
-    // 任何回退都必须是“显式配置”的值——绝不回退到硬编码弱口令。
-    const webdavUsername = env.WEBDAV_USERNAME?.trim();
-    const webdavPassword = env.WEBDAV_PASSWORD?.trim();
-    if (webdavUsername && webdavPassword) {
-      return username === webdavUsername && password === webdavPassword;
+    const config = await getWebdavConfig(db);
+
+    // 必须配置了用户名与密码哈希才允许认证（fail-closed，不回退到其它任何默认）
+    if (!config.username || !config.passwordHash) {
+      return false;
     }
-    const adminUsername = env.ADMIN_USERNAME?.trim();
-    const adminPassword = env.ADMIN_PASSWORD?.trim();
-    if (adminUsername && adminPassword) {
-      return username === adminUsername && password === adminPassword;
+    if (username !== config.username) {
+      return false;
     }
-    // 没有任何已配置凭据时，拒绝所有请求（fail-closed）
-    return false;
+    return await verifyWebdavPassword(password, config.passwordHash);
   } catch {
     return false;
   }
@@ -216,26 +213,21 @@ export async function handleWebdavRequest(
   }
 
   const db = context.cloudflare.env.DB;
-  const env = context.cloudflare.env as {
-    WEBDAV_ENABLED?: string;
-    WEBDAV_USERNAME?: string;
-    WEBDAV_PASSWORD?: string;
-    ADMIN_USERNAME?: string;
-    ADMIN_PASSWORD?: string;
-  };
+
+  await initDatabase(db);
+  // 启用开关与认证均来自 D1 的 WebDAV 服务配置（设置页面自定义），不再读环境变量
+  const webdavConfig = await getWebdavConfig(db);
 
   // Check if WebDAV is enabled
-  if (env.WEBDAV_ENABLED !== "true") {
+  if (!webdavConfig.enabled) {
     return new Response("WebDAV is disabled", { status: 403 });
   }
 
   // Validate authentication
-  const isAuthenticated = await validateWebdavAuth(request, env);
+  const isAuthenticated = await validateWebdavAuth(db, request);
   if (!isAuthenticated) {
     return createUnauthorizedResponse();
   }
-
-  await initDatabase(db);
 
   const storageId = parseInt(params.storageId || "0", 10);
   const path = params["*"] || "";

@@ -1,6 +1,13 @@
 import type { Route } from "./+types/home";
 import { requireAuth } from "~/lib/auth";
 import { getAllStorages, getPublicStorages, initDatabase } from "~/lib/storage";
+import { getWebdavConfig } from "~/lib/webdav-config";
+
+interface WebdavUiConfig {
+  enabled: boolean;
+  username: string;
+  hasPassword: boolean;
+}
 import { useState, useEffect, useCallback, useRef } from "react";
 import { FilePreview } from "~/components/FilePreview";
 import { getFileType, isPreviewable } from "~/lib/file-utils";
@@ -26,16 +33,18 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const siteTitle = context.cloudflare.env.SITE_TITLE || "CList";
   const siteAnnouncement = context.cloudflare.env.SITE_ANNOUNCEMENT || "";
   const chunkSizeMB = parseInt(context.cloudflare.env.CHUNK_SIZE_MB || "50", 10);
-  const webdavEnabled = (context.cloudflare.env.WEBDAV_ENABLED as string) === "true";
 
   if (!db) {
     console.error("D1 Database not bound");
-    return { isAdmin: false, storages: [], siteTitle, siteAnnouncement, chunkSizeMB, webdavEnabled: false };
+    return { isAdmin: false, storages: [], siteTitle, siteAnnouncement, chunkSizeMB, webdav: null };
   }
 
   await initDatabase(db);
 
   const { isAdmin } = await requireAuth(request, db);
+
+  // WebDAV 服务配置读取自 D1（设置页面自定义），不再读环境变量
+  const webdavConfig = await getWebdavConfig(db);
 
   const storages = isAdmin
     ? await getAllStorages(db)
@@ -46,7 +55,11 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     siteTitle,
     siteAnnouncement,
     chunkSizeMB,
-    webdavEnabled,
+    webdav: {
+      enabled: webdavConfig.enabled,
+      username: webdavConfig.username,
+      hasPassword: !!webdavConfig.passwordHash,
+    },
     storages: storages.map((s) => ({
       id: s.id,
       name: s.name,
@@ -903,7 +916,7 @@ function SettingsModal({
   onToggleTheme,
   isAdmin,
   onRefreshStorages,
-  webdavEnabled,
+  webdav,
   storages,
 }: {
   onClose: () => void;
@@ -913,7 +926,7 @@ function SettingsModal({
   onToggleTheme: (e: React.MouseEvent) => void;
   isAdmin: boolean;
   onRefreshStorages: () => void;
-  webdavEnabled: boolean;
+  webdav: WebdavUiConfig | null;
   storages: StorageInfo[];
 }) {
   const [activeTab, setActiveTab] = useState<'general' | 'webdav' | 'backup' | 'audit' | 'about'>('general');
@@ -924,6 +937,42 @@ function SettingsModal({
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState("");
+
+  // WebDAV 服务配置编辑表单状态（存 D1）
+  const [wdEnabled, setWdEnabled] = useState<boolean>(webdav?.enabled ?? false);
+  const [wdUsername, setWdUsername] = useState<string>(webdav?.username ?? "");
+  const [wdPassword, setWdPassword] = useState<string>("");
+  const [wdSaving, setWdSaving] = useState(false);
+  const [wdMsg, setWdMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [wdHasPassword, setWdHasPassword] = useState<boolean>(webdav?.hasPassword ?? false);
+
+  const handleSaveWebdav = async () => {
+    setWdSaving(true);
+    setWdMsg(null);
+    try {
+      const res = await fetch("/api/webdav-config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: wdEnabled,
+          username: wdUsername.trim(),
+          password: wdPassword, // 空串表示不修改已设置的密码
+        }),
+      });
+      const data = (await res.json()) as { hasPassword?: boolean; error?: string };
+      if (res.ok) {
+        if (typeof data.hasPassword === "boolean") setWdHasPassword(data.hasPassword);
+        setWdPassword("");
+        setWdMsg({ ok: true, text: "已保存" });
+      } else {
+        setWdMsg({ ok: false, text: data.error || "保存失败" });
+      }
+    } catch {
+      setWdMsg({ ok: false, text: "保存失败" });
+    } finally {
+      setWdSaving(false);
+    }
+  };
 
   const handleExportBackup = async () => {
     setExporting(true);
@@ -1127,88 +1176,109 @@ function SettingsModal({
               <div className="flex items-center justify-between py-2">
                 <div>
                   <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold">WebDAV 服务</div>
-                  <div className="text-xs text-zinc-500">通过 WebDAV 协议访问存储</div>
+                  <div className="text-xs text-zinc-500">启用状态、用户名与密码在此配置（存储于数据库）</div>
                 </div>
                 <span className={`px-2 py-1 text-xs font-medium rounded ${
-                  webdavEnabled 
+                  wdEnabled 
                     ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' 
                     : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
                 }`}>
-                  {webdavEnabled ? '已启用' : '未启用'}
+                  {wdEnabled ? '已启用' : '未启用'}
                 </span>
               </div>
 
-              {webdavEnabled ? (
-                <>
-                  {/* WebDAV URL */}
-                  <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">访问地址</div>
-                    <div className="text-xs text-zinc-500 mb-3">
-                      使用 WebDAV 客户端连接以下地址访问存储
-                    </div>
-                    <div className="bg-zinc-50 dark:bg-zinc-800 p-3 rounded border border-zinc-200 dark:border-zinc-700">
-                      <div className="text-xs text-zinc-500 mb-1.5">根目录 (所有存储):</div>
-                      <code className="text-sm text-blue-600 dark:text-blue-400 font-mono break-all">
-                        {typeof window !== 'undefined' ? `${window.location.origin}/dav/0/` : '/dav/0/'}
-                      </code>
+              {/* Enabled Toggle */}
+              <div className="flex items-center justify-between py-2">
+                <div>
+                  <div className="text-sm text-zinc-800 dark:text-zinc-200">启用 WebDAV 服务</div>
+                  <div className="text-xs text-zinc-500 mt-0.5">关闭后访问 /dav/ 返回 403</div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={wdEnabled}
+                  onClick={() => setWdEnabled(v => !v)}
+                  className={`relative inline-flex items-center h-6 w-11 rounded-full transition ${wdEnabled ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-600'}`}
+                >
+                  <span className={`absolute left-0.5 top-0.5 block h-5 w-5 rounded-full bg-white transition-transform ${wdEnabled ? 'translate-x-5' : ''}`} />
+                </button>
+              </div>
+
+              {/* WebDAV Endpoint Address */}
+              <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
+                <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">访问地址</div>
+                <div className="text-xs text-zinc-500 mb-3">
+                  使用 WebDAV 客户端连接以下地址访问存储
+                </div>
+                <div className="bg-zinc-50 dark:bg-zinc-800 p-3 rounded border border-zinc-200 dark:border-zinc-700">
+                  <div className="text-xs text-zinc-500 mb-1.5">根目录 (所有存储):</div>
+                  <code className="text-sm text-blue-600 dark:text-blue-400 font-mono break-all">
+                    {typeof window !== 'undefined' ? `${window.location.origin}/dav/0/` : '/dav/0/'}
+                  </code>
+                </div>
+                {storages.length > 0 && (
+                  <div className="mt-3">
+                    <div className="text-xs text-zinc-500 mb-1.5">各存储:</div>
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {storages.map((storage) => (
+                        <div key={storage.id} className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border border-zinc-200 dark:border-zinc-700">
+                          <div className="text-xs text-zinc-700 dark:text-zinc-300 font-mono mb-1">{storage.name}</div>
+                          <code className="text-xs text-blue-600 dark:text-blue-400 font-mono break-all">
+                            {typeof window !== 'undefined' ? `${window.location.origin}/dav/${storage.id}/` : `/dav/${storage.id}/`}
+                          </code>
+                        </div>
+                      ))}
                     </div>
                   </div>
+                )}
+              </div>
 
-                  {/* Storage List with WebDAV URLs */}
-                  {storages.length > 0 && (
-                    <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                      <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">存储访问地址</div>
-                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                        {storages.map((storage) => (
-                          <div key={storage.id} className="bg-zinc-50 dark:bg-zinc-800 p-2 rounded border border-zinc-200 dark:border-zinc-700">
-                            <div className="text-xs text-zinc-700 dark:text-zinc-300 font-mono mb-1">{storage.name}</div>
-                            <code className="text-xs text-blue-600 dark:text-blue-400 font-mono break-all">
-                              {typeof window !== 'undefined' ? `${window.location.origin}/dav/${storage.id}/` : `/dav/${storage.id}/`}
-                            </code>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Authentication Info */}
-                  <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">认证方式</div>
-                    <div className="text-xs text-zinc-600 dark:text-zinc-400 font-mono space-y-1">
-                      <p>• 协议: HTTP Basic Authentication</p>
-                      <p>• 用户名/密码: 使用 WEBDAV_USERNAME/WEBDAV_PASSWORD 环境变量配置</p>
-                      <p>• 默认: 使用管理员账号密码 (ADMIN_USERNAME/ADMIN_PASSWORD)</p>
-                    </div>
+              {/* Custom Authentication */}
+              <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
+                <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2">认证方式</div>
+                <div className="text-xs text-zinc-500 mb-3">
+                  协议: HTTP Basic Authentication。
+                  {wdHasPassword ? ' 当前已设置 WebDAV 密码。' : ' 当前未设置密码，启用后未经认证的访问会被拒绝。'}
+                  留空密码表示不修改已设置的密码。
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">用户名</label>
+                    <input
+                      value={wdUsername}
+                      onChange={(e) => setWdUsername(e.target.value)}
+                      placeholder="webdav"
+                      className="w-full px-2 py-1.5 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
                   </div>
-
-                  {/* Usage Tips */}
-                  <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                    <div className="text-sm text-zinc-900 dark:text-zinc-100 font-semibold mb-2 flex items-center gap-2">
-                      <span className="text-blue-500">💡</span> 使用提示
-                    </div>
-                    <div className="text-xs text-zinc-600 dark:text-zinc-400 font-mono space-y-1">
-                      <p>• Windows: 映射网络驱动器，输入 WebDAV 地址</p>
-                      <p>• macOS: Finder → 前往 → 连接服务器</p>
-                      <p>• Linux: 使用 davfs2 或文件管理器</p>
-                      <p>• 移动端: 使用支持 WebDAV 的文件管理 App</p>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
-                  <div className="text-xs text-zinc-500 font-medium space-y-2">
-                    <p>WebDAV 服务未启用。要启用 WebDAV，请在 Cloudflare Workers 环境变量中设置:</p>
-                    <div className="bg-zinc-50 dark:bg-zinc-800 p-3 rounded border border-zinc-200 dark:border-zinc-700 mt-2">
-                      <code className="text-xs text-zinc-700 dark:text-zinc-300">WEBDAV_ENABLED = "true"</code>
-                    </div>
-                    <p className="mt-2">可选配置:</p>
-                    <div className="bg-zinc-50 dark:bg-zinc-800 p-3 rounded border border-zinc-200 dark:border-zinc-700">
-                      <code className="text-xs text-zinc-700 dark:text-zinc-300 block">WEBDAV_USERNAME = "your_username"</code>
-                      <code className="text-xs text-zinc-700 dark:text-zinc-300 block">WEBDAV_PASSWORD = "your_password"</code>
-                    </div>
+                  <div>
+                    <label className="block text-xs text-zinc-500 mb-1">密码（保存时加密存储）</label>
+                    <input
+                      type="password"
+                      value={wdPassword}
+                      onChange={(e) => setWdPassword(e.target.value)}
+                      placeholder={wdHasPassword ? '••••••••（留空保持不变）' : '设置 WebDAV 密码'}
+                      className="w-full px-2 py-1.5 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
                   </div>
                 </div>
-              )}
+              </div>
+
+              {/* Save */}
+              <div className="border-t border-zinc-200 dark:border-zinc-700 pt-4">
+                {wdMsg && (
+                  <div className={`text-xs mb-3 ${wdMsg.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                    {wdMsg.text}
+                  </div>
+                )}
+                <button
+                  onClick={handleSaveWebdav}
+                  disabled={wdSaving}
+                  className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded disabled:opacity-50 transition"
+                >
+                  {wdSaving ? '保存中...' : '保存 WebDAV 配置'}
+                </button>
+              </div>
             </div>
           )}
 
@@ -3852,7 +3922,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const siteTitle = loaderData.siteTitle || "CList";
   const siteAnnouncement = loaderData.siteAnnouncement || "";
   const chunkSizeMB = loaderData.chunkSizeMB || 50;
-  const webdavEnabled = loaderData.webdavEnabled || false;
+  const webdav = loaderData.webdav || { enabled: false, username: "", hasPassword: false };
 
   useEffect(() => {
     const saved = localStorage.getItem("theme");
@@ -4189,7 +4259,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           onToggleTheme={toggleTheme}
           isAdmin={isAdmin}
           onRefreshStorages={refreshStorages}
-          webdavEnabled={webdavEnabled}
+          webdav={webdav}
           storages={storages}
         />
       )}
