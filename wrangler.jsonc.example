@@ -1,6 +1,13 @@
 /**
- * Example Wrangler config used for CI type generation.
- * Replace with real values in actual deployment config.
+ * Example Wrangler config used for CI type generation AND as a deployment
+ * template. 真实凭据（密码/密钥/数据库ID）绝不要提交到 Git。
+ *
+ * 推荐实践：
+ *   1. 复制为本地未跟踪文件： cp wrangler.jsonc.example wrangler.jsonc
+ *   2. 在 wrangler.jsonc 或 Cloudflare Dashboard（Variables & Secrets）里填真实值。
+ *   3. 不要在 Git 中提交 wrangler.jsonc —— 它已被 .gitignore 忽略。
+ *
+ * `ADMIN_PASSWORD` / `WEBDAV_PASSWORD` 等应为高强度随机密码，示例如下（占位，勿直接用于生产）。
  */
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -10,13 +17,13 @@
   "vars": {
     "VALUE_FROM_CLOUDFLARE": "Hello from Cloudflare",
     "ADMIN_USERNAME": "admin",
-    "ADMIN_PASSWORD": "changeme",
+    "ADMIN_PASSWORD": "CHANGE_ME_TO_A_STRONG_PASSWORD",
     "SITE_TITLE": "CList",
     "SITE_ANNOUNCEMENT": "Welcome to CList storage service!",
     "CHUNK_SIZE_MB": "10",
     "WEBDAV_ENABLED": "false",
     "WEBDAV_USERNAME": "webdav",
-    "WEBDAV_PASSWORD": "changeme"
+    "WEBDAV_PASSWORD": "CHANGE_ME_TO_A_STRONG_PASSWORD"
   },
   "d1_databases": [
     {
