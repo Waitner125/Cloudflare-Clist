@@ -287,6 +287,31 @@ export async function handleWebdavRequest(
       return new Response("Cannot modify root", { status: 403 });
     }
 
+    // GET / HEAD - 浏览器友好：返回各存储的 HTML 目录列表（WebDAV 根目录可浏览）
+    if (method === "GET" || method === "HEAD") {
+      const storages = await getAllStorages(db);
+      const html = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>CList WebDAV</title></head>
+<body>
+<h1>Index of /</h1>
+<ul>
+${storages.map(s => `<li><a href="/dav/${s.id}/">${s.name}/</a></li>`).join("\n")}
+</ul>
+</body>
+</html>`;
+      if (method === "HEAD") {
+        return new Response(null, {
+          status: 200,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        });
+      }
+      return new Response(html, {
+        status: 200,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      });
+    }
+
     return new Response("Method not allowed", { status: 405 });
   }
 
