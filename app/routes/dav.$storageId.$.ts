@@ -1,11 +1,6 @@
 import type { Route } from "./+types/dav.$storageId.$";
-import { getStorageById, getAllStorages, initDatabase, updateStorage } from "~/lib/storage";
-import { S3Client } from "~/lib/s3-client";
-import { WebdevClient } from "~/lib/webdev-client";
-import { OneDriveClient } from "~/lib/onedrive-client";
-import { GoogleDriveClient } from "~/lib/gdrive-client";
-import { AliyunDriveClient } from "~/lib/alicloud-client";
-import { BaiduYunClient } from "~/lib/baiduyun-client";
+import { getStorageById, getAllStorages, initDatabase } from "~/lib/storage";
+import { createStorageClient, withClientState, moveOrCopyDelete } from "~/lib/client-factory";
 
 // WebDAV server endpoint - provides WebDAV access to storages
 
@@ -118,6 +113,42 @@ function getContentType(filename: string): string {
   return mimeTypes[ext] || "application/octet-stream";
 }
 
+/**
+ * 从 WebDAV Destination 头解析出本存储内的目标路径。
+ * - 只接受与当前请求同源、且路径前缀与本存储 (`/dav/{storageId}/`) 一致的地址，
+ *   防止跨存储 / 绝对路径逃离当前存储。
+ * - 返回的目标路径不含前导斜杠（与 CList 内部 key 约定一致）。
+ */
+function parseDavDestination(
+  destinationHeader: string,
+  request: Request,
+  storageId: number
+): string | null {
+  let destUrl: URL;
+  try {
+    destUrl = new URL(destinationHeader);
+  } catch {
+    return null;
+  }
+
+  const reqUrl = new URL(request.url);
+  // 主机必须一致（拒绝指向其它站点/内网的绝对地址）
+  if (destUrl.origin !== reqUrl.origin) {
+    return null;
+  }
+
+  const prefix = `/dav/${storageId}/`;
+  if (!destUrl.pathname.startsWith(prefix)) {
+    // 若目标不是当前存储的 URL（例如 /dav/其他id/ 或根路径），拒绝
+    return null;
+  }
+
+  let destPath = decodeURIComponent(destUrl.pathname.slice(prefix.length));
+  // 规范化：去掉前后斜杠，避免目标逃逸或产生 `//` 路径
+  destPath = destPath.replace(/^\/+|\/+$/g, "");
+  return destPath || null;
+}
+
 // Validate Basic Auth credentials
 async function validateWebdavAuth(
   request: Request,
@@ -132,11 +163,20 @@ async function validateWebdavAuth(
     const credentials = atob(authHeader.slice(6));
     const [username, password] = credentials.split(":");
 
-    // Check WebDAV-specific credentials first
-    const webdavUsername = env.WEBDAV_USERNAME || env.ADMIN_USERNAME || "admin";
-    const webdavPassword = env.WEBDAV_PASSWORD || env.ADMIN_PASSWORD || "changeme";
-
-    return username === webdavUsername && password === webdavPassword;
+    // 优先用独立的 WebDAV 凭据；若未单独配置则回退到明确配置的 ADMIN 凭据。
+    // 任何回退都必须是“显式配置”的值——绝不回退到硬编码弱口令。
+    const webdavUsername = env.WEBDAV_USERNAME?.trim();
+    const webdavPassword = env.WEBDAV_PASSWORD?.trim();
+    if (webdavUsername && webdavPassword) {
+      return username === webdavUsername && password === webdavPassword;
+    }
+    const adminUsername = env.ADMIN_USERNAME?.trim();
+    const adminPassword = env.ADMIN_PASSWORD?.trim();
+    if (adminUsername && adminPassword) {
+      return username === adminUsername && password === adminPassword;
+    }
+    // 没有任何已配置凭据时，拒绝所有请求（fail-closed）
+    return false;
   } catch {
     return false;
   }
@@ -150,96 +190,6 @@ function createUnauthorizedResponse(): Response {
       "Content-Type": "text/plain",
     },
   });
-}
-
-type StorageClient = S3Client | WebdevClient | OneDriveClient | GoogleDriveClient | AliyunDriveClient | BaiduYunClient;
-type StatefulClient = {
-  getStateUpdates: () => { config?: Record<string, any>; saving?: Record<string, any> } | null;
-};
-
-// Create storage client based on type
-function createClient(storage: {
-  type: string;
-  endpoint: string;
-  region: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  bucket: string;
-  basePath: string;
-  config?: Record<string, any>;
-  saving?: Record<string, any>;
-}): StorageClient {
-  if (storage.type === "webdev") {
-    return new WebdevClient({
-      endpoint: storage.endpoint,
-      username: storage.accessKeyId,
-      password: storage.secretAccessKey,
-      basePath: storage.basePath,
-    });
-  }
-  if (storage.type === "onedrive") {
-    return new OneDriveClient({ config: storage.config, saving: storage.saving });
-  }
-  if (storage.type === "gdrive") {
-    return new GoogleDriveClient({ config: storage.config, saving: storage.saving });
-  }
-  if (storage.type === "alicloud") {
-    return new AliyunDriveClient({ config: storage.config, saving: storage.saving });
-  }
-  if (storage.type === "baiduyun") {
-    return new BaiduYunClient({ config: storage.config, saving: storage.saving });
-  }
-  return new S3Client({
-    endpoint: storage.endpoint,
-    region: storage.region,
-    accessKeyId: storage.accessKeyId,
-    secretAccessKey: storage.secretAccessKey,
-    bucket: storage.bucket,
-    basePath: storage.basePath,
-  });
-}
-
-async function persistClientState(
-  client: StorageClient,
-  db: D1Database,
-  storageId: number
-): Promise<void> {
-  const stateful = client as unknown as StatefulClient;
-  if (typeof stateful.getStateUpdates !== "function") {
-    return;
-  }
-  const updates = stateful.getStateUpdates();
-  if (!updates) {
-    return;
-  }
-  const input: { config?: Record<string, any>; saving?: Record<string, any> } = {};
-  if (updates.config) {
-    input.config = updates.config;
-  }
-  if (updates.saving) {
-    input.saving = updates.saving;
-  }
-  if (Object.keys(input).length === 0) {
-    return;
-  }
-  await updateStorage(db, storageId, input);
-}
-
-async function withClientState<T>(
-  client: StorageClient,
-  db: D1Database,
-  storageId: number,
-  action: () => Promise<T>
-): Promise<T> {
-  try {
-    return await action();
-  } finally {
-    try {
-      await persistClientState(client, db, storageId);
-    } catch (error) {
-      console.error("Failed to persist storage state:", error);
-    }
-  }
 }
 
 // Unified WebDAV request handler
@@ -353,7 +303,7 @@ export async function handleWebdavRequest(
     return new Response("Storage not found", { status: 404 });
   }
 
-  const client = createClient(storage);
+  const client = createStorageClient(storage);
   const url = new URL(request.url);
   const baseUrl = `/dav/${storageId}`;
 
@@ -407,8 +357,11 @@ export async function handleWebdavRequest(
           return new Response("Destination header required", { status: 400 });
         }
 
-        const destUrl = new URL(destinationHeader);
-        const destPath = destUrl.pathname.replace(`/dav/${storageId}/`, "");
+        const destUrlOk = parseDavDestination(destinationHeader, request, storageId);
+        if (destUrlOk === null) {
+          return new Response("Invalid or unsafe Destination header", { status: 400 });
+        }
+        const destPath = destUrlOk;
 
         await withClientState(client, db, storageId, () => client.copyObject(path, destPath));
         return new Response(null, { status: 201 });
@@ -426,21 +379,13 @@ export async function handleWebdavRequest(
           return new Response("Destination header required", { status: 400 });
         }
 
-        const destUrl = new URL(destinationHeader);
-        const destPath = destUrl.pathname.replace(`/dav/${storageId}/`, "");
-
-        const canDirectMove = typeof (client as { moveObject?: (path: string, destPath: string) => Promise<void> }).moveObject === "function";
-        if (canDirectMove) {
-          await withClientState(
-            client,
-            db,
-            storageId,
-            () => (client as { moveObject: (path: string, destPath: string) => Promise<void> }).moveObject(path, destPath)
-          );
-        } else {
-          await withClientState(client, db, storageId, () => client.copyObject(path, destPath));
-          await withClientState(client, db, storageId, () => client.deleteObject(path));
+        const destUrlOk2 = parseDavDestination(destinationHeader, request, storageId);
+        if (destUrlOk2 === null) {
+          return new Response("Invalid or unsafe Destination header", { status: 400 });
         }
+        const destPath = destUrlOk2;
+
+        await moveOrCopyDelete(client, db, storageId, path, destPath);
         return new Response(null, { status: 201 });
       } catch (error) {
         console.error("MOVE error:", error);

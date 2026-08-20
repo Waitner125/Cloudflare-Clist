@@ -20,24 +20,61 @@ interface ShareRow {
   password_hash: string | null;
 }
 
-/** SHA-256 → hex，用于密码哈希（Cloudflare Workers Web Crypto） */
-async function hashPassword(password: string): Promise<string> {
-  const data = new TextEncoder().encode(password);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+function bytesToHex(bytes: Uint8Array): string {
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function generateRandomToken(length: number = 16): string {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+/** 用 crypto 安全的随机数生成 url-safe/base64url 令牌 */
+function randomBytes(count: number): Uint8Array {
+  const bytes = new Uint8Array(count);
+  crypto.getRandomValues(bytes);
+  return bytes;
+}
+
+/**
+ * 加盐分享访问密码：`sha256(password + ":" + salt)`，salt 以 `salt$` 前缀内嵌在存储值里。
+ * Cloudflare Workers 无内置 bcrypt/scrypt，Web Crypto 提供的是 SHA 族，故用 SHA-256 + 随机盐。
+ */
+async function hashPassword(password: string, salt?: string): Promise<string> {
+  const actualSalt = salt || bytesToHex(randomBytes(16));
+  const data = new TextEncoder().encode(`${password}:${actualSalt}`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return `${actualSalt}$${bytesToHex(new Uint8Array(digest))}`;
+}
+
+/** 旧版（无盐）SHA-256 hex，兼容历史分享密码 */
+async function legacyHashPassword(password: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(password));
+  return bytesToHex(new Uint8Array(digest));
+}
+
+/** 恒定时间比较两个字符串（避免时序侧信道泄露逐字节差异） */
+async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const aBytes = enc.encode(a);
+  const bBytes = enc.encode(b);
+  if (aBytes.byteLength !== bBytes.byteLength) {
+    return false;
   }
-  return result;
+  let diff = 0;
+  for (let i = 0; i < aBytes.byteLength; i++) {
+    diff |= aBytes[i] ^ bBytes[i];
+  }
+  return diff === 0;
+}
+
+function generateRandomToken(length: number = 32): string {
+  // 用 crypto 安全随机字节生成 base64url 令牌（无 fill 字符）
+  const bytes = randomBytes(length);
+  let bin = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    bin += String.fromCharCode(bytes[i]);
+  }
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function generateShareId(): string {
-  return `share_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `share_${Date.now().toString(36)}_${bytesToHex(randomBytes(9))}`;
 }
 
 function validateShareToken(shareToken: string): void {
@@ -142,7 +179,7 @@ export async function getAllShares(db: D1Database, storageId?: number): Promise<
   return (result.results || []).map((row) => rowToShare(row)).filter((s): s is Share => s !== null);
 }
 
-/** 校验访问密码：分享未设密码时返回 true；否则比对 SHA-256 */
+/** 校验访问密码：分享未设密码时返回 true；否则恒定时间比对加盐哈希 */
 export async function verifySharePassword(
   db: D1Database,
   token: string,
@@ -156,8 +193,21 @@ export async function verifySharePassword(
   if (!row) return false;
   if (!row.password_hash) return true; // 未设密码
   if (!password) return false;
-  const hash = await hashPassword(password);
-  return hash === row.password_hash;
+
+  // 兼容旧版无盐哈希（不含 "$"），新存储值形如 "salt$digest"
+  const stored = row.password_hash;
+  const saltIndex = stored.lastIndexOf("$");
+  if (saltIndex > 0) {
+    // 新格式：加盐
+    const salt = stored.slice(0, saltIndex);
+    const expectedDigest = stored.slice(saltIndex + 1);
+    const hash = await hashPassword(password, salt);
+    const computedDigest = hash.slice(hash.indexOf("$") + 1);
+    return timingSafeEqual(computedDigest, expectedDigest);
+  }
+  // 旧格式：无盐直接 SHA-256
+  const legacy = await legacyHashPassword(password);
+  return timingSafeEqual(legacy, stored);
 }
 
 export async function deleteShare(db: D1Database, id: string): Promise<void> {

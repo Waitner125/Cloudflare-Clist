@@ -1,4 +1,5 @@
 import { createRequestHandler, type AppLoadContext } from "react-router";
+import { handleWebdavRequest } from "../app/routes/dav.$storageId.$";
 
 declare module "react-router" {
   export interface AppLoadContext {
@@ -12,23 +13,6 @@ declare module "react-router" {
 const getServerBuild = () => import("virtual:react-router/server-build");
 
 const requestHandler = createRequestHandler(getServerBuild, import.meta.env.MODE);
-
-async function handleWebdavRequest(
-  request: Request,
-  params: { storageId: string; "*": string },
-  context: AppLoadContext
-): Promise<Response> {
-  const build = await getServerBuild();
-  const route = build.routes["routes/dav.$storageId.$"];
-  const module = route?.module as
-    | { handleWebdavRequest?: (request: Request, params: { storageId: string; "*": string }, context: AppLoadContext) => Promise<Response> }
-    | undefined;
-  const handler = module?.handleWebdavRequest;
-  if (typeof handler !== "function") {
-    return new Response("WebDAV handler not found", { status: 500 });
-  }
-  return handler(request, params, context);
-}
 
 function getWebdavParams(request: Request): { storageId: string; "*": string } | null {
   const url = new URL(request.url);
@@ -46,6 +30,7 @@ export default {
   async fetch(request, env, ctx) {
     const webdavParams = getWebdavParams(request);
     if (webdavParams) {
+      // 直接调用路由模块导出的纯处理函数，避免依赖构建产物内部结构
       return handleWebdavRequest(request, webdavParams, {
         cloudflare: { env, ctx },
       });

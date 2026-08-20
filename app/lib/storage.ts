@@ -236,8 +236,12 @@ export async function updateStorage(
     values.push(JSON.stringify(mergedConfig));
   }
   if (input.saving !== undefined) {
+    const mergedSaving = {
+      ...(existing.saving || {}),
+      ...(input.saving || {}),
+    };
     updates.push("saving_json = ?");
-    values.push(JSON.stringify(input.saving || {}));
+    values.push(JSON.stringify(mergedSaving));
   }
   if (input.isPublic !== undefined) {
     updates.push("is_public = ?");

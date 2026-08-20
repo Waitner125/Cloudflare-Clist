@@ -1,105 +1,17 @@
 import type { Route } from "./+types/api.files.$storageId.$";
-import { getStorageById, initDatabase, updateStorage } from "~/lib/storage";
+import { getStorageById, initDatabase } from "~/lib/storage";
 import { requireAuth } from "~/lib/auth";
 import { getShareByToken, verifySharePassword } from "~/lib/shares";
-import { S3Client } from "~/lib/s3-client";
-import { WebdevClient } from "~/lib/webdev-client";
-import { OneDriveClient } from "~/lib/onedrive-client";
-import { GoogleDriveClient } from "~/lib/gdrive-client";
-import { AliyunDriveClient } from "~/lib/alicloud-client";
-import { BaiduYunClient } from "~/lib/baiduyun-client";
+import {
+  createStorageClient,
+  withClientState,
+  canDirectMove,
+  canDirectRename,
+} from "~/lib/client-factory";
 import { getRequestMeta, logAudit } from "~/lib/audit";
 import { getFileType, getMimeType } from "~/lib/file-utils";
 
-type StorageClient = S3Client | WebdevClient | OneDriveClient | GoogleDriveClient | AliyunDriveClient | BaiduYunClient;
-type StatefulClient = {
-  getStateUpdates: () => { config?: Record<string, any>; saving?: Record<string, any> } | null;
-};
-
-function createClient(storage: {
-  type: string;
-  endpoint: string;
-  region: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-  bucket: string;
-  basePath: string;
-  config?: Record<string, any>;
-  saving?: Record<string, any>;
-}): StorageClient {
-  if (storage.type === "webdev") {
-    return new WebdevClient({
-      endpoint: storage.endpoint,
-      username: storage.accessKeyId,
-      password: storage.secretAccessKey,
-      basePath: storage.basePath,
-    });
-  }
-  if (storage.type === "onedrive") {
-    return new OneDriveClient({ config: storage.config, saving: storage.saving });
-  }
-  if (storage.type === "gdrive") {
-    return new GoogleDriveClient({ config: storage.config, saving: storage.saving });
-  }
-  if (storage.type === "alicloud") {
-    return new AliyunDriveClient({ config: storage.config, saving: storage.saving });
-  }
-  if (storage.type === "baiduyun") {
-    return new BaiduYunClient({ config: storage.config, saving: storage.saving });
-  }
-  return new S3Client({
-    endpoint: storage.endpoint,
-    region: storage.region,
-    accessKeyId: storage.accessKeyId,
-    secretAccessKey: storage.secretAccessKey,
-    bucket: storage.bucket,
-    basePath: storage.basePath,
-  });
-}
-
-async function persistClientState(
-  client: StorageClient,
-  db: D1Database,
-  storageId: number
-): Promise<void> {
-  const stateful = client as unknown as StatefulClient;
-  if (typeof stateful.getStateUpdates !== "function") {
-    return;
-  }
-  const updates = stateful.getStateUpdates();
-  if (!updates) {
-    return;
-  }
-  const input: { config?: Record<string, any>; saving?: Record<string, any> } = {};
-  if (updates.config) {
-    input.config = updates.config;
-  }
-  if (updates.saving) {
-    input.saving = updates.saving;
-  }
-  if (Object.keys(input).length === 0) {
-    return;
-  }
-  await updateStorage(db, storageId, input);
-}
-
-async function withClientState<T>(
-  client: StorageClient,
-  db: D1Database,
-  storageId: number,
-  action: () => Promise<T>
-): Promise<T> {
-  try {
-    return await action();
-  } finally {
-    try {
-      await persistClientState(client, db, storageId);
-    } catch (error) {
-      console.error("Failed to persist storage state:", error);
-    }
-  }
-}
-
+// Unified files API handler
 export async function loader({ request, params, context }: Route.LoaderArgs) {
   const db = context.cloudflare.env.DB;
   await initDatabase(db);
@@ -166,7 +78,7 @@ export async function loader({ request, params, context }: Route.LoaderArgs) {
     }
   }
 
-  const client = createClient(storage);
+  const client = createStorageClient(storage);
 
   // List objects
   if (action === "list" || (!action && !isInlineImageRequest)) {
@@ -332,7 +244,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
   }
 
-  const client = createClient(storage);
+  const client = createStorageClient(storage);
 
   // Initialize multipart upload
   if (method === "POST" && action === "multipart-init") {
@@ -538,8 +450,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
         : "";
       const newPath = parentPath + newName + (isDirectory ? "/" : "");
 
-      const canDirectRename = typeof (client as { renameObject?: (path: string, name: string) => Promise<void> }).renameObject === "function";
-      if (canDirectRename) {
+      if (canDirectRename(client)) {
         await withClientState(
           client,
           db,
@@ -682,8 +593,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       const targetDir = destPath.endsWith("/") ? destPath : (destPath ? destPath + "/" : "");
       const newPath = targetDir + fileName + (isDirectory ? "/" : "");
 
-      const canDirectMove = typeof (client as { moveObject?: (path: string, destPath: string) => Promise<void> }).moveObject === "function";
-      if (canDirectMove) {
+      if (canDirectMove(client)) {
         await withClientState(
           client,
           db,
