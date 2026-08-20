@@ -108,12 +108,9 @@ Copy-Item .\wrangler.jsonc.example .\wrangler.jsonc
 | `SITE_TITLE` | 否 | `CList` | 站点标题 |
 | `SITE_ANNOUNCEMENT` | 否 | `Welcome to CList storage service!` | 站点公告 |
 | `CHUNK_SIZE_MB` | 否 | `10` | 上传分块大小（MB） |
-| `WEBDAV_ENABLED` | 否 | `false` | 是否启用 WebDAV |
-| `WEBDAV_USERNAME` | 否 | `webdav` | WebDAV 用户名 |
-| `WEBDAV_PASSWORD` | 否 | `changeme` | WebDAV 密码 |
-| `VALUE_FROM_CLOUDFLARE` | 否 | `Hello from Cloudflare` | 示例变量（可选） |
 
-> 建议将敏感字段（如密码）通过 Wrangler Secret 管理，以避免明文配置。
+> 建议将敏感字段（如密码）通过 Cloudflare Dashboard 的 Variables & Secrets 管理，以避免明文配置。
+> **WebDAV 不再使用环境变量**：启用状态、用户名与密码均在「设置 → WebDAV 服务」页面配置，并加密存储于 D1。
 
 ## 数据库迁移
 
@@ -198,17 +195,13 @@ wrangler deploy
 
 ### 启用 WebDAV
 
-在 `wrangler.jsonc` 中设置：
+WebDAV 服务在项目设置页面中启用并配置，无需环境变量：
 
-```json
-{
-  "vars": {
-    "WEBDAV_ENABLED": "true",
-    "WEBDAV_USERNAME": "your_webdav_username",
-    "WEBDAV_PASSWORD": "your_webdav_password"
-  }
-}
-```
+1. 登录管理员账号 → 打开「设置」
+2. 在「WebDAV 服务」选项中打开启用开关
+3. 设置 WebDAV 用户名与密码，点击保存
+
+配置加密存储于 D1 数据库（`webdav_config` 表），不通过 `wrangler.jsonc` 的 `vars` 推送。
 
 ### 访问地址
 

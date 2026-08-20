@@ -1,28 +1,28 @@
 # CList
 
 <p align="center">
-  <strong>A Cloudflare-native storage aggregation panel with WebDAV, multi-drive support, file preview, sharing, audit logs, and admin controls.</strong>
+  <strong>基于 Cloudflare 的原生云存储聚合面板：WebDAV、多存储后端、文件预览、分享、审计日志与管理员控制。</strong>
 </p>
 
 <p align="center">
   <a href="./README_zh-CN.md">简体中文</a>
   ·
-  <a href="./docs/deployment.md">Deployment</a>
+  <a href="./docs/deployment.md">部署文档</a>
   ·
-  <a href="./docs/webdav.md">WebDAV</a>
+  <a href="./docs/webdav.md">WebDAV 文档</a>
   ·
-  <a href="./GITHUB_WORKFLOW_DEPLOY.md">GitHub Actions</a>
+  <a href="./GITHUB_WORKFLOW_DEPLOY.md">GitHub Actions 部署</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/ooyyh/Cloudflare-Clist/stargazers">
-    <img alt="GitHub stars" src="https://img.shields.io/github/stars/ooyyh/Cloudflare-Clist?style=for-the-badge&logo=github">
+  <a href="https://github.com/Waitner125/Cloudflare-Clist/stargazers">
+    <img alt="GitHub stars" src="https://img.shields.io/github/stars/Waitner125/Cloudflare-Clist?style=for-the-badge&logo=github">
   </a>
-  <a href="https://github.com/ooyyh/Cloudflare-Clist/network/members">
-    <img alt="GitHub forks" src="https://img.shields.io/github/forks/ooyyh/Cloudflare-Clist?style=for-the-badge&logo=github">
+  <a href="https://github.com/Waitner125/Cloudflare-Clist/network/members">
+    <img alt="GitHub forks" src="https://img.shields.io/github/forks/Waitner125/Cloudflare-Clist?style=for-the-badge&logo=github">
   </a>
-  <a href="https://github.com/ooyyh/Cloudflare-Clist/blob/master/LICENSE">
-    <img alt="License" src="https://img.shields.io/github/license/ooyyh/Cloudflare-Clist?style=for-the-badge">
+  <a href="https://github.com/Waitner125/Cloudflare-Clist/blob/master/LICENSE">
+    <img alt="License" src="https://img.shields.io/github/license/Waitner125/Cloudflare-Clist?style=for-the-badge">
   </a>
   <a href="https://workers.cloudflare.com/">
     <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F38020?style=for-the-badge&logo=cloudflare&logoColor=white">
@@ -33,14 +33,14 @@
 </p>
 
 <p align="center">
-  <img src="./public/clist-cover.png" alt="CList product preview" width="100%">
+  <img src="./public/clist-cover.png" alt="CList 产品预览" width="100%">
 </p>
 
-## Overview
+## 项目概述
 
-CList turns Cloudflare Workers + D1 into a lightweight cloud storage aggregation service. It gives you a single web UI and WebDAV endpoint for S3-compatible storage, WebDAV servers, OneDrive, Google Drive, Aliyun Drive, and Baidu Netdisk.
+CList 将 Cloudflare Workers + D1 转化为轻量级云存储聚合服务，通过统一的 Web 界面与 WebDAV 端点访问 S3 兼容存储、WebDAV 服务器、OneDrive、Google Drive、阿里云盘与百度网盘。
 
-It is designed for small personal data centers, public download mirrors, private file hubs, and edge-hosted storage dashboards where running a traditional server is overkill.
+它面向小型个人数据中心、公共下载镜像、私有文件枢纽与边缘托管存储面板等场景——无需部署传统服务器即可获得完整的存储管理能力。
 
 ```mermaid
 flowchart LR
@@ -55,61 +55,59 @@ flowchart LR
   Worker --> BD[Baidu Netdisk]
 ```
 
-## Highlights
+## 核心特性
 
-- Multi-storage file browser with public and private permission controls
-- WebDAV server endpoint for desktop sync tools, mobile file managers, and CLI clients
-- S3-compatible storage support, including custom endpoint and base path
-- Drive integrations for OneDrive, Google Drive, Aliyun Drive, and Baidu Netdisk
-- File upload, download, folder creation, rename, move, copy, and delete workflows
-- Preview support for common text, markdown, code, image, audio, video, and document files
-- Public share links with token-based access
-- Storage statistics with visual charts for total size, file count, folder count, and file type distribution
-- Audit logs for admin actions and file operations
-- Cloudflare D1 persistence and Workers edge deployment
-- GitHub Actions deployment guide for repeatable releases
+- 多存储文件浏览器，支持公开 / 私有权限控制
+- WebDAV 服务端点，支持桌面同步工具、移动文件管理器与 CLI 客户端
+- S3 兼容存储支持（自定义端点与基础路径）
+- OneDrive、Google Drive、阿里云盘、百度网盘等网盘集成
+- 文件上传、下载、新建文件夹、重命名、移动、复制、删除等完整操作
+- 文本、Markdown、代码、图片、音频、视频与文档的在线预览
+- 基于令牌的公开分享链接
+- 存储统计与可视化图表（总大小、文件数、文件夹数、文件类型分布）
+- 管理操作与文件操作审计日志
+- Cloudflare D1 持久化与 Workers 边缘部署
+- GitHub Actions 可重复部署指南
 
-## Supported Backends
+## 支持的存储后端
 
-| Backend | Browse | Upload | Rename / Move | Notes |
+| 后端 | 浏览 | 上传 | 重命名 / 移动 | 说明 |
 | --- | --- | --- | --- | --- |
-| S3 compatible | Yes | Yes | Yes | Works with R2-like and S3-compatible endpoints |
-| WebDAV upstream | Yes | Yes | Yes | Also exposed through CList's own WebDAV server |
-| OneDrive | Yes | Yes | Yes | Supports online refresh API or custom OAuth app |
-| Google Drive | Yes | Yes | Yes | Supports online refresh API or custom OAuth app |
-| Aliyun Drive | Yes | Yes | Yes | Uses Aliyun Open API style token refresh |
-| Baidu Netdisk | Yes | Yes | Yes | Supports refresh token based access |
+| S3 兼容 | 是 | 是 | 是 | 支持 R2 及各类 S3 兼容端点 |
+| WebDAV 上游 | 是 | 是 | 是 | 同时通过 CList 自身 WebDAV 服务暴露 |
+| OneDrive | 是 | 是 | 是 | 支持在线刷新 API 或自定义 OAuth 应用 |
+| Google Drive | 是 | 是 | 是 | 支持在线刷新 API 或自定义 OAuth 应用 |
+| 阿里云盘 | 是 | 是 | 是 | 使用阿里云开放 API 风格令牌刷新 |
+| 百度网盘 | 是 | 是 | 是 | 基于 refresh token 访问 |
 
-## Quick Start
+## 快速开始
 
-### 1. Clone and Install
+### 1. 克隆并安装依赖
 
 ```bash
-git clone https://github.com/ooyyh/Cloudflare-Clist.git
+git clone https://github.com/Waitner125/Cloudflare-Clist.git
 cd Cloudflare-Clist
 npm install
 ```
 
-### 2. Create a D1 Database
+### 2. 创建 D1 数据库
 
 ```bash
 npx wrangler login
 npx wrangler d1 create clist
 ```
 
-Keep the returned `database_id`; it is used in the next step.
+记下返回的 `database_id`，下一步会用到。
 
-### 3. Configure Wrangler
+### 3. 配置 Wrangler
 
-Create your production config from the example:
+从示例配置创建生产配置：
 
 ```bash
 cp wrangler.jsonc.example wrangler.jsonc
 ```
 
-Then copy the D1 `database_id` returned by Wrangler into `wrangler.jsonc`.
-
-Recommended production shape:
+将 Wrangler 返回的 `database_id` 填入 `wrangler.jsonc`：
 
 ```jsonc
 {
@@ -129,69 +127,74 @@ Recommended production shape:
 }
 ```
 
-Use Cloudflare Dashboard or Wrangler secrets/vars for runtime values. Keeping `keep_vars: true` avoids overwriting Dashboard-managed variables during deploys.
+> 推荐：管理员密码等敏感信息请使用 Cloudflare Dashboard 的 **Variables & Secrets** 管理。保持 `keep_vars: true` 可避免部署时覆盖 Dashboard 中已配置的变量。
 
-### 4. Apply Database Migrations
+### 4. 应用数据库迁移
 
 ```bash
 npx wrangler d1 migrations apply clist --remote
 ```
 
-### 5. Deploy
+### 5. 部署
 
 ```bash
 npm run build
 npx wrangler deploy
 ```
 
-## Environment Variables
+## 环境变量
 
-| Variable | Required | Example | Description |
+| 变量 | 必填 | 示例 | 说明 |
 | --- | --- | --- | --- |
-| `DB` | Yes | D1 binding | Cloudflare D1 database binding |
-| `ADMIN_USERNAME` | Yes | `admin` | Admin login username |
-| `ADMIN_PASSWORD` | Yes | `change-me` | Admin login password |
-| `SITE_TITLE` | No | `CList` | Site title shown in the UI |
-| `SITE_ANNOUNCEMENT` | No | `Welcome` | Announcement text shown to visitors |
-| `CHUNK_SIZE_MB` | No | `10` | Browser upload chunk size |
-| `WEBDAV_ENABLED` | No | `true` | Enables the WebDAV server endpoint |
-| `WEBDAV_USERNAME` | No | `webdav` | WebDAV username; falls back to admin username |
-| `WEBDAV_PASSWORD` | No | `secret` | WebDAV password; falls back to admin password |
+| `DB` | 是 | D1 binding | Cloudflare D1 数据库绑定 |
+| `ADMIN_USERNAME` | 是 | `admin` | 管理员登录用户名 |
+| `ADMIN_PASSWORD` | 是 | `change-me` | 管理员登录密码 |
+| `SITE_TITLE` | 否 | `CList` | 界面显示的站点标题 |
+| `SITE_ANNOUNCEMENT` | 否 | `欢迎使用` | 面向访客显示的公告文本 |
+| `CHUNK_SIZE_MB` | 否 | `10` | 浏览器上传分块大小 |
+
+> **WebDAV 不再使用环境变量配置**。启用状态、用户名与密码均在项目的「设置 → WebDAV 服务」页面中配置，并加密存储于 D1 数据库。
 
 ## WebDAV
 
-When `WEBDAV_ENABLED` is set to `"true"`, CList exposes storage backends through WebDAV:
+WebDAV 服务在设置页面中启用并配置（无需环境变量）：
+
+1. 登录管理员账号 → 打开「设置」
+2. 在「WebDAV 服务」选项中打开启用开关
+3. 设置 WebDAV 用户名与密码，点击保存
+
+启用后通过以下地址访问：
 
 ```text
-https://your-domain.example/dav/0/            # all storages
-https://your-domain.example/dav/{storageId}/  # one storage
+https://your-domain.example/dav/0/            # 所有存储
+https://your-domain.example/dav/{storageId}/  # 指定存储
 ```
 
-Important details:
+注意事项：
 
-- WebDAV URLs should end with a trailing slash.
-- Use Basic Auth with `WEBDAV_USERNAME` / `WEBDAV_PASSWORD`.
-- Desktop clients such as Windows WebDAV, macOS Finder, Cyberduck, RaiDrive, NetDrive, and many mobile file managers can connect directly.
-- CList supports `OPTIONS`, `PROPFIND`, `GET`, `HEAD`, `PUT`, `DELETE`, `MKCOL`, `COPY`, and `MOVE`.
+- WebDAV 地址需要以斜杠 `/` 结尾。
+- 使用 HTTP Basic Auth，凭据为设置页面中配置的用户名 / 密码。
+- 桌面端 Windows WebDAV、macOS Finder、Cyberduck、RaiDrive、NetDrive 及多数移动文件管理器可直接连接。
+- CList 支持 `OPTIONS`、`PROPFIND`、`GET`、`HEAD`、`PUT`、`DELETE`、`MKCOL`、`COPY`、`MOVE` 方法。
 
-More details: [docs/webdav.md](./docs/webdav.md)
+更多细节：[docs/webdav.md](./docs/webdav.md)
 
-## Drive Configuration Notes
+## 网盘配置说明
 
-CList follows the OpenList-style driver flow for cloud drive token refresh:
+CList 遵循 OpenList 风格的驱动流程进行云盘令牌刷新：
 
-- Online refresh API is enabled by default for OneDrive, Google Drive, Aliyun Drive, and Baidu Netdisk.
-- Existing OpenList-style `api_url_address` values are accepted alongside CList's `api_address`.
-- If no local `client_id` and `client_secret` are configured, CList automatically falls back to the online refresh API.
-- Refreshed tokens are persisted into storage state so repeated browsing does not require re-login.
+- OneDrive、Google Drive、阿里云盘、百度网盘默认启用在线刷新 API。
+- 兼容既有 OpenList 风格的 `api_url_address` 字段，同时支持 CList 的 `api_address`。
+- 未配置本地 `client_id` / `client_secret` 时，自动回退到在线刷新 API。
+- 刷新后的令牌持久化到存储状态，重复浏览无需重新登录。
 
-## Development
+## 开发
 
 ```bash
 npm run dev
 ```
 
-Useful checks:
+常用检查：
 
 ```bash
 npm run build
@@ -199,43 +202,43 @@ npm run typecheck
 npx wrangler deploy --dry-run
 ```
 
-## Project Structure
+## 项目结构
 
 ```text
 app/
-  components/        React components
-  lib/               storage clients, auth, audit, utilities
-  routes/            React Router routes and API endpoints
+  components/        React 组件
+  lib/               存储客户端、认证、审计、工具
+  routes/            React Router 路由与 API 端点
 workers/
-  app.ts             Cloudflare Worker entry
-migrations/          D1 migrations
-docs/                deployment and WebDAV docs
-public/              static assets
+  app.ts             Cloudflare Worker 入口
+migrations/          D1 迁移脚本
+docs/                部署与 WebDAV 文档
+public/              静态资源
 ```
 
-## Documentation
+## 文档
 
-- [Deployment Guide](./docs/deployment.md)
-- [Configuration Guide](./docs/configuration.md)
-- [WebDAV Guide](./docs/webdav.md)
-- [GitHub Actions Deployment](./GITHUB_WORKFLOW_DEPLOY.md)
+- [部署指南](./docs/deployment.md)
+- [配置指南](./docs/configuration.md)
+- [WebDAV 指南](./docs/webdav.md)
+- [GitHub Actions 部署](./GITHUB_WORKFLOW_DEPLOY.md)
 
 ## Star History
 
-<a href="https://www.star-history.com/#ooyyh/Cloudflare-Clist&Date">
+<a href="https://www.star-history.com/#Waitner125/Cloudflare-Clist&Date">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=ooyyh/Cloudflare-Clist&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=ooyyh/Cloudflare-Clist&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=ooyyh/Cloudflare-Clist&type=Date" />
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Waitner125/Cloudflare-Clist&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Waitner125/Cloudflare-Clist&type=Date" />
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Waitner125/Cloudflare-Clist&type=Date" />
   </picture>
 </a>
 
-## Support
+## 支持
 
-- GitHub Issues: [ooyyh/Cloudflare-Clist/issues](https://github.com/ooyyh/Cloudflare-Clist/issues)
-- Author: [@ooyyh](https://github.com/ooyyh)
-- Email: laowan345@gmail.com
+- GitHub Issues: [Waitner125/Cloudflare-Clist/issues](https://github.com/Waitner125/Cloudflare-Clist/issues)
+- 作者: [@ooyyh](https://github.com/ooyyh)
+- 邮箱: laowan345@gmail.com
 
-## License
+## 许可证
 
-CList is released under the [MIT License](./LICENSE).
+CList 基于 [MIT License](./LICENSE) 发布。
