@@ -2,21 +2,22 @@
 
 ## 概述
 
-CList 现在完全支持 WebDAV 协议，允许你通过标准的 WebDAV 客户端访问云存储。
+CList 完全支持 WebDAV 协议，允许你通过标准的 WebDAV 客户端访问云存储。
+
+**重要**：WebDAV 服务不再使用环境变量配置，而是通过项目设置页面管理。
 
 ## 快速开始
 
 ### 1. 启用 WebDAV
 
-在 Cloudflare Workers 环境变量中设置：
+1. 登录管理员账号
+2. 打开「设置」弹窗
+3. 切换到「WebDAV 服务」选项
+4. 打开**启用开关**
+5. 设置 **用户名** 与 **密码**
+6. 点击**保存**
 
-```json
-{
-  "WEBDAV_ENABLED": "true",
-  "WEBDAV_USERNAME": "你的用户名",
-  "WEBDAV_PASSWORD": "你的密码"
-}
-```
+配置加密存储于 D1 数据库（`webdav_config` 表）。
 
 ### 2. 获取 WebDAV URL
 
@@ -49,15 +50,15 @@ sudo mount -t davfs https://你的域名/dav/11/ /mnt/webdav
 ### 405 Method Not Allowed 错误
 
 **快速解决**：
-1. 确认 `WEBDAV_ENABLED = "true"` (必须是字符串)
-2. 确保 URL 以 `/` 结尾
-3. 重新部署 Worker：`npm run deploy`
+1. 确保 URL 以 `/` 结尾
+2. 在设置页面确认 WebDAV 已启用
+3. 确认浏览器/客户端使用正确的认证凭据
 
 详细解决方案：[WebDAV 快速修复指南](./WEBDAV_快速修复.md)
 
 ### 401 Unauthorized 错误
 
-检查用户名和密码是否正确。
+在设置页面确认用户名和密码是否正确。
 
 ### 404 Not Found 错误
 
@@ -136,7 +137,7 @@ curl -i -X OPTIONS https://你的域名/dav/11/
 ## 获取帮助
 
 - 📧 邮箱：laowan345@gmail.com
-- 🐛 GitHub Issues：https://github.com/ooyyh/Cloudflare-Clist/issues
+- 🐛 GitHub Issues：https://github.com/Waitner125/Cloudflare-Clist/issues
 - 📚 文档：查看 `docs/` 目录下的详细文档
 
 ## 更新日志
@@ -145,5 +146,5 @@ curl -i -X OPTIONS https://你的域名/dav/11/
 
 ---
 
-**最后更新**：2026-06-12  
-**版本**：1.1.0
+**最后更新**：2026-06-15  
+**版本**：1.2.0

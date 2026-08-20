@@ -41,8 +41,6 @@ wrangler d1 list
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID | 是 |
 | `ADMIN_USERNAME` | 管理员账号 | 是 |
 | `ADMIN_PASSWORD` | 管理员密码 | 是 |
-| `WEBDAV_USERNAME` | WebDAV 用户名 | 否 |
-| `WEBDAV_PASSWORD` | WebDAV 密码 | 否 |
 
 ## 3. 配置 GitHub Variables
 
@@ -62,12 +60,8 @@ wrangler d1 list
 | `SITE_TITLE` | 空 | 站点标题 |
 | `SITE_ANNOUNCEMENT` | 空 | 站点公告 |
 | `CHUNK_SIZE_MB` | 空 | 上传分片大小 |
-| `WEBDAV_ENABLED` | 空 | `true`/`false` |
 
-说明：
-
-- 若未设置 `D1_DATABASE_ID`，工作流会使用 API Token + Account ID 自动查找数据库 ID。
-- `WEBDAV_USERNAME`/`WEBDAV_PASSWORD` 未设置时，将沿用管理员账号密码。
+> **注意**：WebDAV 服务不再使用环境变量配置。启用状态、用户名与密码在项目的「设置 → WebDAV 服务」页面中配置，并加密存储于 D1 数据库。
 
 ## 4. 触发部署
 

@@ -11,9 +11,8 @@ The application uses the following environment variables:
 | `SITE_TITLE` | Title displayed on the website |
 | `SITE_ANNOUNCEMENT` | Announcement text shown on the homepage |
 | `CHUNK_SIZE_MB` | Maximum file chunk size in MB for uploads |
-| `WEBDAV_ENABLED` | Set to `true` to enable WebDAV server |
-| `WEBDAV_USERNAME` | WebDAV access username (optional, defaults to admin username) |
-| `WEBDAV_PASSWORD` | WebDAV access password (optional, defaults to admin password) |
+
+> **注意**：WebDAV 服务不再使用环境变量配置。启用状态、用户名与密码在项目的「设置 → WebDAV 服务」页面中配置，并加密存储于 D1 数据库（`webdav_config` 表）。
 
 ## Wrangler Configuration
 

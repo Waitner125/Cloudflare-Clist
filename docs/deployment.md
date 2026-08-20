@@ -49,8 +49,6 @@ Add the following secrets in "Settings → Secrets and variables → Actions →
 | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID | Yes |
 | `ADMIN_USERNAME` | Admin username | Yes |
 | `ADMIN_PASSWORD` | Admin password | Yes |
-| `WEBDAV_USERNAME` | WebDAV username | No |
-| `WEBDAV_PASSWORD` | WebDAV password | No |
 
 #### GitHub Variables
 
@@ -69,7 +67,6 @@ Add variables in "Settings → Secrets and variables → Actions → Variables":
 | `SITE_TITLE` | (empty) | Site title |
 | `SITE_ANNOUNCEMENT` | (empty) | Site announcement |
 | `CHUNK_SIZE_MB` | (empty) | Upload chunk size |
-| `WEBDAV_ENABLED` | (empty) | `true` / `false` |
 
 #### Triggering Deployment
 

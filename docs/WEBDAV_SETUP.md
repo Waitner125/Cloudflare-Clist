@@ -1,94 +1,31 @@
 # WebDAV 完整配置指南
 
-## 问题诊断
+## WebDAV 配置方式
 
-### 常见错误
+**重要**：WebDAV 服务不再使用环境变量配置。所有配置在项目的设置页面中完成。
 
-#### 1. 405 Method Not Allowed
-**原因**：
-- WebDAV 未启用（`WEBDAV_ENABLED` 不是 "true"）
-- 路由配置问题
-- URL 格式不正确
+### 配置步骤
 
-**解决方案**：
-1. 确保 Cloudflare Workers 环境变量中设置了 `WEBDAV_ENABLED = "true"`
-2. 确保 URL 格式正确（需要以斜杠结尾）：
-   - ✅ 正确：`https://your-domain/dav/11/`
-   - ❌ 错误：`https://your-domain/dav/11`（缺少尾部斜杠）
+1. 登录管理员账号
+2. 打开「设置」弹窗
+3. 切换到「WebDAV 服务」选项
+4. 配置以下内容：
+   - **启用开关**：控制 WebDAV 服务是否开启
+   - **用户名**：WebDAV 访问用户名
+   - **密码**：WebDAV 访问密码
+5. 点击**保存**，配置加密存储于 D1 数据库
 
-#### 2. 401 Unauthorized
-**原因**：认证失败
-
-**解决方案**：
-- 检查用户名密码是否正确
-- 确认环境变量 `WEBDAV_USERNAME` 和 `WEBDAV_PASSWORD` 已设置
-
-#### 3. 403 Forbidden
-**原因**：WebDAV 功能未启用
-
-**解决方案**：
-在 Cloudflare Workers 中设置环境变量 `WEBDAV_ENABLED = "true"`
-
-## 配置步骤
-
-### 1. 本地开发环境配置
-
-创建或修改 `.dev.vars` 文件（不要提交到 git）：
-
-```env
-WEBDAV_ENABLED=true
-WEBDAV_USERNAME=your_username
-WEBDAV_PASSWORD=your_password
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=admin_password
-```
-
-### 2. Cloudflare Workers 生产环境配置
-
-#### 方法 A：通过 Cloudflare Dashboard
-
-1. 登录 Cloudflare Dashboard
-2. 进入 Workers & Pages
-3. 选择你的 Worker
-4. 进入 Settings → Variables
-5. 添加以下环境变量：
-
-```
-WEBDAV_ENABLED = true
-WEBDAV_USERNAME = your_username
-WEBDAV_PASSWORD = your_password
-```
-
-#### 方法 B：通过 wrangler 命令行
-
-```bash
-wrangler secret put WEBDAV_PASSWORD
-wrangler secret put WEBDAV_USERNAME
-```
-
-然后在 `wrangler.toml` 或 `wrangler.jsonc` 中添加：
-
-```json
-{
-  "vars": {
-    "WEBDAV_ENABLED": "true",
-    "WEBDAV_USERNAME": "your_username",
-    "WEBDAV_PASSWORD": "your_password"
-  }
-}
-```
-
-### 3. WebDAV 访问 URL
+## WebDAV 访问 URL
 
 WebDAV 服务提供两种访问方式：
 
-#### A. 访问所有存储（根目录）
+### A. 访问所有存储（根目录）
 ```
 https://your-domain/dav/0/
 ```
 这会列出所有可用的存储，每个存储显示为一个文件夹。
 
-#### B. 访问特定存储
+### B. 访问特定存储
 ```
 https://your-domain/dav/{storage_id}/
 ```
@@ -98,6 +35,34 @@ https://your-domain/dav/11/
 ```
 
 ⚠️ **重要**：URL 必须以斜杠 `/` 结尾！
+
+## 故障排查
+
+### 常见错误
+
+#### 1. 405 Method Not Allowed
+**原因**：
+- URL 格式不正确（缺少尾部斜杠）
+- 浏览器直接用 GET 访问不支持的路径
+
+**解决方案**：
+1. 确保 URL 格式正确（需要以斜杠结尾）：
+   - ✅ 正确：`https://your-domain/dav/11/`
+   - ❌ 错误：`https://your-domain/dav/11`（缺少尾部斜杠）
+2. 在设置页面确认 WebDAV 已启用
+
+#### 2. 401 Unauthorized
+**原因**：认证失败
+
+**解决方案**：
+- 检查设置页面中配置的用户名和密码是否正确
+- 确保客户端使用的是正确的认证信息
+
+#### 3. 403 Forbidden
+**原因**：WebDAV 功能未启用
+
+**解决方案**：
+在设置页面的「WebDAV 服务」选项中打开启用开关
 
 ## 客户端配置
 
@@ -279,10 +244,9 @@ curl -i -X DELETE \
 ## 常见问题 FAQ
 
 ### Q: 为什么连接时显示 405 错误？
-A: 检查三点：
-1. `WEBDAV_ENABLED` 必须是字符串 `"true"`（不是布尔值）
-2. URL 必须以 `/` 结尾
-3. 确保已重新部署 Worker
+A: 检查两点：
+1. URL 必须以 `/` 结尾
+2. 在设置页面确认 WebDAV 已启用
 
 ### Q: 可以同时使用多个客户端吗？
 A: 可以，但注意文件冲突。当前实现不支持文件锁定（LOCK/UNLOCK）。
@@ -307,15 +271,19 @@ A: 当前版本不支持，所有认证用户都有完全访问权限。可以�
 - 使用统一的 `handleWebdavRequest` 函数处理所有 WebDAV 方法
 - 支持多种存储后端（S3、WebDAV、OneDrive、Google Drive 等）
 - 使用 HTTP Basic Authentication
+- WebDAV 配置存储于 D1 数据库的 `webdav_config` 表，加密存储
 
 ### 代码位置
 - 路由定义：`app/routes.ts`
 - WebDAV 实现：`app/routes/dav.$storageId.$.ts`
-- WebDAV 客户端：`app/lib/webdev-client.ts`
+- WebDAV 客户端：`app/lib/webdav-config.ts`
 
 ## 更新日志
 
 ### 最新更新
+- ✅ 移除 WebDAV 环境变量依赖（WEBDAV_ENABLED/USERNAME/PASSWORD）
+- ✅ WebDAV 配置改为设置页面管理
+- ✅ 配置加密存储于 D1 数据库
 - ✅ 修复：统一 loader 和 action 处理所有 WebDAV 方法
 - ✅ 修复：OPTIONS 请求添加 CORS 头
 - ✅ 修复：PROPFIND 响应添加 DAV 头
