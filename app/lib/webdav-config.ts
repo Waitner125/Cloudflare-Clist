@@ -75,6 +75,10 @@ CREATE TABLE IF NOT EXISTS webdav_config (
 
 /** 确保表存在并 seed 默认单行（id=1，默认关闭）。 */
 export async function initWebdavConfig(db: D1Database): Promise<void> {
+  const g = globalThis as unknown as { __clist_wd_ready?: boolean };
+  if (g.__clist_wd_ready) {
+    return;
+  }
   await db.prepare(DDL).run();
   const row = await db.prepare("SELECT id FROM webdav_config WHERE id = 1").first<{ id: number }>();
   if (!row) {
@@ -84,6 +88,7 @@ export async function initWebdavConfig(db: D1Database): Promise<void> {
       )
       .run();
   }
+  g.__clist_wd_ready = true;
 }
 
 export async function getWebdavConfig(db: D1Database): Promise<WebdavConfig> {

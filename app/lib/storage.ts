@@ -290,6 +290,13 @@ export async function deleteStorage(
 }
 
 export async function initDatabase(db: D1Database): Promise<void> {
+  // 已在此 isolate 初始化过则直接跳过（避免每个请求重复执行大量 DDL/PRAGMA，优化首屏与登录延迟）
+  // 注意：globalThis 为 Worker isolate 级缓存。若新增了 migration，需用 --reset 或部署新版本才会重新初始化。
+  const g = globalThis as unknown as { __clist_db_ready?: boolean };
+  if (g.__clist_db_ready) {
+    return;
+  }
+
   // 建表（新库）；已存在的表不受 CREATE IF NOT EXISTS 影响
   // 注意: D1 的 exec() 按换行分割语句，故每条 DDL 单独 prepare().run()
   const ddl = [
@@ -368,6 +375,9 @@ export async function initDatabase(db: D1Database): Promise<void> {
   if (shareNames.size > 0 && !shareNames.has("password_hash")) {
     await db.prepare("ALTER TABLE shares ADD COLUMN password_hash TEXT").run();
   }
+
+  // 标记初始化完成
+  (globalThis as unknown as { __clist_db_ready?: boolean }).__clist_db_ready = true;
 }
 
 // Backup types
